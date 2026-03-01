@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% if mode=='login' %}Sign In{% else %}Create Account{% endif %} — StudyAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#05060a;--ink2:#0b0c15;--ink3:#11131e;
+  --glass:rgba(255,255,255,0.03);--glass2:rgba(255,255,255,0.06);
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --gold:#c9a84c;--gold2:#e8c76a;--gold-glow:rgba(201,168,76,0.12);
+  --txt:#e8e4d9;--txt2:#9b9589;--txt3:#504d46;
+  --red:#c94c4c;--green:#4cc98c;
+  --r:12px;--r2:8px;
+  --serif:'Playfair Display',serif;
+  --sans:'Space Grotesk',sans-serif;
+  --mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--ink);color:var(--txt);font-family:var(--sans);
+  min-height:100vh;display:flex;
+}
+
+/* split layout */
+.auth-left{
+  width:46%;background:var(--ink2);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;justify-content:space-between;
+  padding:3rem;position:relative;overflow:hidden;
+}
+.auth-left::before{
+  content:'';position:absolute;top:-100px;left:-100px;
+  width:400px;height:400px;border-radius:50%;
+  background:radial-gradient(circle,rgba(201,168,76,0.06) 0%,transparent 65%);
+  pointer-events:none;
+}
+.auth-left::after{
+  content:'';position:absolute;bottom:-80px;right:-80px;
+  width:300px;height:300px;border-radius:50%;
+  background:radial-gradient(circle,rgba(76,154,201,0.05) 0%,transparent 65%);
+  pointer-events:none;
+}
+.auth-brand{
+  font-family:var(--serif);font-size:1.6rem;font-weight:700;
+  color:var(--txt);text-decoration:none;
+}
+.auth-brand span{color:var(--gold);}
+.auth-pitch{position:relative;z-index:1;}
+.auth-pitch-title{
+  font-family:var(--serif);font-size:2.6rem;font-weight:900;
+  line-height:1.1;letter-spacing:-0.03em;color:var(--txt);
+  margin-bottom:1.2rem;
+}
+.auth-pitch-title em{color:var(--gold);font-style:italic;}
+.auth-pitch-sub{font-size:0.92rem;color:var(--txt2);line-height:1.75;margin-bottom:2rem;}
+.feature-pills{display:flex;flex-direction:column;gap:10px;}
+.fpill{
+  display:flex;align-items:center;gap:12px;
+  background:var(--glass2);border:1px solid var(--border);
+  border-radius:var(--r2);padding:10px 14px;
+}
+.fpill-icon{font-size:1rem;}
+.fpill-txt{font-size:0.82rem;color:var(--txt2);}
+.fpill-txt strong{color:var(--txt);}
+.auth-left-footer{
+  font-family:var(--mono);font-size:0.62rem;color:var(--txt3);
+  letter-spacing:0.08em;
+}
+
+/* right panel */
+.auth-right{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  padding:3rem;
+}
+.auth-box{width:100%;max-width:440px;}
+.auth-tabs{
+  display:flex;gap:4px;background:var(--glass);
+  border:1px solid var(--border);border-radius:var(--r2);
+  padding:4px;margin-bottom:2.4rem;
+}
+.auth-tab{
+  flex:1;padding:8px;border-radius:6px;text-align:center;
+  font-size:0.82rem;font-weight:600;letter-spacing:0.04em;
+  cursor:pointer;transition:all 0.2s;color:var(--txt2);
+  text-decoration:none;
+}
+.auth-tab.active{background:var(--gold);color:var(--ink);}
+.auth-tab:hover:not(.active){color:var(--txt);}
+
+.auth-title{
+  font-family:var(--serif);font-size:1.9rem;font-weight:700;
+  letter-spacing:-0.02em;color:var(--txt);margin-bottom:0.4rem;
+}
+.auth-sub{font-size:0.85rem;color:var(--txt2);margin-bottom:2rem;line-height:1.6;}
+
+.form-group{margin-bottom:1.2rem;}
+.form-label{
+  display:block;font-family:var(--mono);font-size:0.65rem;
+  font-weight:600;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--txt3);margin-bottom:7px;
+}
+.form-input{
+  width:100%;background:var(--ink2);border:1px solid var(--border2);
+  border-radius:var(--r2);padding:0.75rem 1rem;
+  font-family:var(--sans);font-size:0.9rem;color:var(--txt);
+  transition:border-color 0.2s,box-shadow 0.2s;outline:none;
+  caret-color:var(--gold);
+}
+.form-input::placeholder{color:var(--txt3);}
+.form-input:focus{
+  border-color:var(--gold);
+  box-shadow:0 0 0 3px rgba(201,168,76,0.1);
+}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+
+.submit-btn{
+  width:100%;background:var(--gold);color:var(--ink);
+  border:none;border-radius:var(--r2);padding:0.9rem;
+  font-family:var(--sans);font-size:0.9rem;font-weight:700;
+  letter-spacing:0.03em;cursor:pointer;margin-top:0.5rem;
+  transition:all 0.2s;box-shadow:0 6px 24px rgba(201,168,76,0.2);
+}
+.submit-btn:hover{background:var(--gold2);transform:translateY(-1px);box-shadow:0 8px 32px rgba(201,168,76,0.3);}
+.submit-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none;}
+
+.auth-divider{
+  text-align:center;font-family:var(--mono);font-size:0.65rem;
+  color:var(--txt3);letter-spacing:0.1em;text-transform:uppercase;
+  margin:1.4rem 0;position:relative;
+}
+.auth-divider::before,.auth-divider::after{
+  content:'';position:absolute;top:50%;width:40%;height:1px;background:var(--border);
+}
+.auth-divider::before{left:0;}
+.auth-divider::after{right:0;}
+
+.error-box,.success-box{
+  border-radius:var(--r2);padding:0.8rem 1rem;
+  font-size:0.82rem;margin-bottom:1.2rem;display:none;
+}
+.error-box{background:rgba(201,76,76,0.08);border:1px solid rgba(201,76,76,0.25);color:#e87a7a;}
+.success-box{background:rgba(76,201,140,0.08);border:1px solid rgba(76,201,140,0.2);color:#7ae8b0;}
+.error-box.show,.success-box.show{display:block;}
+
+.pwd-toggle{position:relative;}
+.pwd-toggle .form-input{padding-right:3rem;}
+.pwd-eye{
+  position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  cursor:pointer;font-size:0.85rem;color:var(--txt3);
+  user-select:none;transition:color 0.15s;
+}
+.pwd-eye:hover{color:var(--gold);}
+
+@media(max-width:860px){
+  .auth-left{display:none;}
+  .auth-right{padding:2rem 1.5rem;}
+}
+</style>
+</head>
+<body>
+
+<div class="auth-left">
+  <a href="/" class="auth-brand">Study<span>AI</span></a>
+  <div class="auth-pitch">
+    <div class="auth-pitch-title">
+      Learn smarter,<br><em>not harder.</em>
+    </div>
+    <div class="auth-pitch-sub">
+      Your personal AI learning system — powered by multiple specialized agents
+      working together to build the perfect learning path for you.
+    </div>
+    <div class="feature-pills">
+      <div class="fpill">
+        <div class="fpill-icon">🔍</div>
+        <div class="fpill-txt"><strong>Deep learner analysis</strong> — understands your exact level</div>
+      </div>
+      <div class="fpill">
+        <div class="fpill-icon">🗺️</div>
+        <div class="fpill-txt"><strong>Custom roadmaps</strong> — structured phase-by-phase plans</div>
+      </div>
+      <div class="fpill">
+        <div class="fpill-icon">⚡</div>
+        <div class="fpill-txt"><strong>Adaptive quizzes</strong> — test yourself at any point</div>
+      </div>
+      <div class="fpill">
+        <div class="fpill-icon">📄</div>
+        <div class="fpill-txt"><strong>Document Q&A</strong> — chat with your own study materials</div>
+      </div>
+    </div>
+  </div>
+  <div class="auth-left-footer">Free to use · Groq & OpenAI models</div>
+</div>
+
+<div class="auth-right">
+  <div class="auth-box">
+    <div class="auth-tabs">
+      <a href="/login"    class="auth-tab {% if mode=='login' %}active{% endif %}">Sign In</a>
+      <a href="/register" class="auth-tab {% if mode=='register' %}active{% endif %}">Create Account</a>
+    </div>
+
+    {% if mode == 'login' %}
+    <div class="auth-title">Welcome back</div>
+    <div class="auth-sub">Sign in to continue your learning journey.</div>
+    <div class="error-box"   id="err"></div>
+    <div class="success-box" id="suc"></div>
+    <div class="form-group">
+      <label class="form-label">Email or Username</label>
+      <input class="form-input" id="identifier" type="text" placeholder="you@example.com" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <div class="pwd-toggle">
+        <input class="form-input" id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+        <span class="pwd-eye" onclick="togglePwd('password',this)">👁</span>
+      </div>
+    </div>
+    <button class="submit-btn" id="submitBtn" onclick="doLogin()">Sign In</button>
+
+    {% else %}
+    <div class="auth-title">Join StudyAI</div>
+    <div class="auth-sub">Create your free account and start learning intelligently.</div>
+    <div class="error-box"   id="err"></div>
+    <div class="success-box" id="suc"></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Full Name</label>
+        <input class="form-input" id="full_name" type="text" placeholder="Ada Lovelace">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input class="form-input" id="username" type="text" placeholder="ada_learns" autocomplete="username">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input class="form-input" id="email" type="email" placeholder="ada@example.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <div class="pwd-toggle">
+        <input class="form-input" id="password" type="password" placeholder="Min. 6 characters" autocomplete="new-password">
+        <span class="pwd-eye" onclick="togglePwd('password',this)">👁</span>
+      </div>
+    </div>
+    <button class="submit-btn" id="submitBtn" onclick="doRegister()">Create Account</button>
+    {% endif %}
+
+  </div>
+</div>
+
+<script>
+function togglePwd(id,el){
+  const inp=document.getElementById(id);
+  inp.type=inp.type==='password'?'text':'password';
+  el.textContent=inp.type==='password'?'👁':'🙈';
+}
+function showErr(msg){
+  const el=document.getElementById('err');
+  el.textContent=msg;el.classList.add('show');
+  document.getElementById('suc').classList.remove('show');
+}
+function showSuc(msg){
+  const el=document.getElementById('suc');
+  el.textContent=msg;el.classList.add('show');
+  document.getElementById('err').classList.remove('show');
+}
+function setBusy(b){
+  const btn=document.getElementById('submitBtn');
+  btn.disabled=b;btn.textContent=b?'Please wait…':(btn.textContent.includes('Sign')?'Sign In':'Create Account');
+}
+
+async function doLogin(){
+  const id=document.getElementById('identifier').value.trim();
+  const pw=document.getElementById('password').value;
+  if(!id||!pw){showErr('Please fill in all fields.');return;}
+  setBusy(true);
+  try{
+    const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:id,password:pw})});
+    const d=await r.json();
+    if(d.error){showErr(d.error);setBusy(false);}
+    else{showSuc('Welcome back! Redirecting…');setTimeout(()=>location.href=d.redirect,600);}
+  }catch(e){showErr('Network error. Try again.');setBusy(false);}
+}
+
+async function doRegister(){
+  const fn=document.getElementById('full_name')?.value.trim()||'';
+  const un=document.getElementById('username').value.trim();
+  const em=document.getElementById('email').value.trim();
+  const pw=document.getElementById('password').value;
+  if(!un||!em||!pw){showErr('Please fill in all required fields.');return;}
+  setBusy(true);
+  try{
+    const r=await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({full_name:fn,username:un,email:em,password:pw})});
+    const d=await r.json();
+    if(d.error){showErr(d.error);setBusy(false);}
+    else{showSuc('Account created! Setting up your dashboard…');setTimeout(()=>location.href=d.redirect,800);}
+  }catch(e){showErr('Network error. Try again.');setBusy(false);}
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    {% if mode=='login' %}doLogin();{% else %}doRegister();{% endif %}
+  }
+});
+</script>
+</body>
+</html>

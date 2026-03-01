@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Profile — StudyAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#05060a;--ink2:#0b0c15;--ink3:#11131e;
+  --glass:rgba(255,255,255,0.03);--glass2:rgba(255,255,255,0.06);
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --gold:#c9a84c;--gold2:#e8c76a;--gold-glow:rgba(201,168,76,0.1);
+  --steel:#4c9ac9;--violet:#9a7fc9;--rose:#c94c7a;--green:#4cc98c;
+  --txt:#e8e4d9;--txt2:#9b9589;--txt3:#504d46;
+  --r:14px;--r2:9px;
+  --serif:'Playfair Display',serif;--sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
+  --sidebar:240px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--ink);color:var(--txt);font-family:var(--sans);display:flex;}
+.sidebar{width:var(--sidebar);flex-shrink:0;background:var(--ink2);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh;overflow-y:auto;}
+.sidebar-brand{padding:1.4rem 1.2rem 0.9rem;border-bottom:1px solid var(--border);}
+.brand-logo{font-family:var(--serif);font-size:1.2rem;font-weight:700;color:var(--txt);text-decoration:none;display:block;}
+.brand-logo span{color:var(--gold);}
+.sidebar-section{padding:0.8rem 0.6rem 0.4rem;}
+.sidebar-section-label{font-family:var(--mono);font-size:0.58rem;font-weight:600;color:var(--txt3);letter-spacing:0.15em;text-transform:uppercase;padding:0 0.6rem;margin-bottom:0.4rem;}
+.sidebar-nav{display:flex;flex-direction:column;gap:2px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:0.55rem 0.7rem;border-radius:5px;font-size:0.82rem;font-weight:500;color:var(--txt2);text-decoration:none;transition:all 0.15s;}
+.nav-item:hover{background:var(--glass2);color:var(--txt);}
+.nav-item.active{background:var(--gold-glow);color:var(--gold);}
+.ni{font-size:0.9rem;width:18px;text-align:center;}
+.sidebar-bottom{margin-top:auto;padding:0.8rem 0.6rem;border-top:1px solid var(--border);}
+.user-card{display:flex;align-items:center;gap:8px;padding:0.6rem;border-radius:var(--r2);background:var(--glass);border:1px solid var(--border);}
+.user-avatar-lg{width:30px;height:30px;border-radius:50%;background:var(--gold-glow);border:1px solid rgba(201,168,76,0.2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.62rem;color:var(--gold);}
+.user-name{font-size:0.78rem;font-weight:600;color:var(--txt);}
+.logout-btn{margin-left:auto;background:none;border:none;cursor:pointer;color:var(--txt3);font-size:0.8rem;transition:color 0.15s;}
+.logout-btn:hover{color:var(--rose);}
+.main{flex:1;height:100vh;overflow-y:auto;}
+.topbar{background:rgba(5,6,10,0.9);border-bottom:1px solid var(--border);padding:0.9rem 2rem;backdrop-filter:blur(12px);position:sticky;top:0;z-index:5;}
+.topbar-title{font-family:var(--serif);font-size:1.05rem;font-weight:700;color:var(--txt);}
+.content-area{padding:2rem;max-width:900px;}
+
+.profile-banner{
+  background:var(--ink2);border:1px solid var(--border2);border-radius:var(--r);
+  padding:2.4rem;margin-bottom:2rem;display:flex;gap:2rem;align-items:center;
+  position:relative;overflow:hidden;
+}
+.profile-banner::before{
+  content:'';position:absolute;top:-80px;right:-80px;width:280px;height:280px;
+  background:radial-gradient(circle,rgba(201,168,76,0.06) 0%,transparent 65%);pointer-events:none;
+}
+.profile-avatar{
+  width:80px;height:80px;border-radius:50%;flex-shrink:0;
+  background:var(--gold-glow);border:2px solid rgba(201,168,76,0.3);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-size:2rem;font-weight:700;color:var(--gold);
+  position:relative;z-index:1;
+}
+.pb-right{position:relative;z-index:1;}
+.pb-name{font-family:var(--serif);font-size:1.6rem;font-weight:700;color:var(--txt);letter-spacing:-0.02em;margin-bottom:4px;}
+.pb-email{font-size:0.85rem;color:var(--txt2);margin-bottom:0.6rem;}
+.pb-joined{font-family:var(--mono);font-size:0.62rem;color:var(--txt3);letter-spacing:0.08em;}
+
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:2rem;}
+.stat-card{background:var(--ink3);border:1px solid var(--border2);border-radius:var(--r2);padding:1.2rem;position:relative;overflow:hidden;}
+.stat-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;border-radius:99px;}
+.stat-card.gold::after{background:var(--gold);}
+.stat-card.steel::after{background:var(--steel);}
+.stat-card.violet::after{background:var(--violet);}
+.sc-val{font-family:var(--serif);font-size:2.2rem;font-weight:700;margin-bottom:4px;}
+.stat-card.gold .sc-val{color:var(--gold);}
+.stat-card.steel .sc-val{color:var(--steel);}
+.stat-card.violet .sc-val{color:var(--violet);}
+.sc-lbl{font-family:var(--mono);font-size:0.6rem;color:var(--txt3);letter-spacing:0.1em;text-transform:uppercase;}
+
+.form-section{background:var(--ink3);border:1px solid var(--border);border-radius:var(--r);padding:1.8rem;margin-bottom:1.2rem;}
+.fs-title{font-family:var(--serif);font-size:1rem;font-weight:700;color:var(--txt);margin-bottom:1.4rem;padding-bottom:0.7rem;border-bottom:1px solid var(--border);}
+.field{margin-bottom:1.2rem;}
+.field-label{font-family:var(--mono);font-size:0.6rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--txt3);margin-bottom:6px;display:block;}
+.field-input{width:100%;background:var(--ink2);border:1px solid var(--border2);border-radius:var(--r2);padding:0.7rem 0.9rem;font-family:var(--sans);font-size:0.875rem;color:var(--txt);outline:none;transition:border-color 0.2s,box-shadow 0.2s;caret-color:var(--gold);}
+.field-input::placeholder{color:var(--txt3);}
+.field-input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,168,76,0.07);}
+.fields-row{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;}
+.btn-save{background:var(--gold);color:var(--ink);border:none;border-radius:var(--r2);padding:0.7rem 1.8rem;font-family:var(--sans);font-size:0.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;}
+.btn-save:hover{background:var(--gold2);}
+.msg{border-radius:var(--r2);padding:0.7rem 1rem;font-size:0.82rem;margin-bottom:1rem;display:none;}
+.msg.err{background:rgba(201,76,76,0.08);border:1px solid rgba(201,76,76,0.25);color:#e87a7a;}
+.msg.ok{background:rgba(76,201,140,0.08);border:1px solid rgba(76,201,140,0.2);color:#7ae8b0;}
+.msg.show{display:block;}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-brand"><a href="/" class="brand-logo">Study<span>AI</span></a></div>
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">Navigate</div>
+    <nav class="sidebar-nav">
+      <a href="/dashboard" class="nav-item"><span class="ni">🏠</span> Dashboard</a>
+      <a href="/dashboard" class="nav-item"><span class="ni">✦</span> New Session</a>
+      <a href="/history"   class="nav-item"><span class="ni">📋</span> History</a>
+      <a href="/profile"   class="nav-item active"><span class="ni">👤</span> Profile</a>
+      <a href="/about"     class="nav-item"><span class="ni">ℹ️</span> About</a>
+    </nav>
+  </div>
+  <div class="sidebar-bottom">
+    <div class="user-card">
+      <div class="user-avatar-lg">{{ user.avatar_seed or user.username[:2].upper() }}</div>
+      <div><div class="user-name">{{ user.full_name or user.username }}</div></div>
+      <button class="logout-btn" onclick="fetch('/api/auth/logout',{method:'POST'}).then(()=>location.href='/')">⏻</button>
+    </div>
+  </div>
+</aside>
+<main class="main">
+  <div class="topbar"><div class="topbar-title">Profile & Account</div></div>
+  <div class="content-area">
+    <div class="profile-banner">
+      <div class="profile-avatar">{{ user.avatar_seed or user.username[:2].upper() }}</div>
+      <div class="pb-right">
+        <div class="pb-name">{{ user.full_name or user.username }}</div>
+        <div class="pb-email">{{ user.email }}</div>
+        <div class="pb-joined">Member since {{ user.created_at.strftime('%B %Y') }}</div>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card gold">
+        <div class="sc-val">{{ total_sessions }}</div>
+        <div class="sc-lbl">Study Sessions</div>
+      </div>
+      <div class="stat-card steel">
+        <div class="sc-val">{{ total_interactions }}</div>
+        <div class="sc-lbl">AI Interactions</div>
+      </div>
+      <div class="stat-card violet">
+        <div class="sc-val">{{ user.created_at.strftime('%Y') }}</div>
+        <div class="sc-lbl">Member Since</div>
+      </div>
+    </div>
+
+    <!-- Edit profile -->
+    <div class="form-section">
+      <div class="fs-title">Edit Profile</div>
+      <div class="msg err" id="prof-err"></div>
+      <div class="msg ok"  id="prof-ok"></div>
+      <div class="field">
+        <label class="field-label">Full Name</label>
+        <input class="field-input" id="p-name" type="text" value="{{ user.full_name or '' }}" placeholder="Your full name">
+      </div>
+      <div class="field">
+        <label class="field-label">Email (read-only)</label>
+        <input class="field-input" type="email" value="{{ user.email }}" disabled style="opacity:0.5;cursor:not-allowed;">
+      </div>
+      <button class="btn-save" onclick="saveProfile()">Save Changes</button>
+    </div>
+
+    <!-- Change password -->
+    <div class="form-section">
+      <div class="fs-title">Change Password</div>
+      <div class="msg err" id="pw-err"></div>
+      <div class="msg ok"  id="pw-ok"></div>
+      <div class="field">
+        <label class="field-label">Current Password</label>
+        <input class="field-input" id="pw-cur" type="password" placeholder="••••••••">
+      </div>
+      <div class="fields-row">
+        <div class="field">
+          <label class="field-label">New Password</label>
+          <input class="field-input" id="pw-new" type="password" placeholder="Min 6 characters">
+        </div>
+        <div class="field">
+          <label class="field-label">Confirm New Password</label>
+          <input class="field-input" id="pw-conf" type="password" placeholder="Repeat new password">
+        </div>
+      </div>
+      <button class="btn-save" onclick="changePassword()">Update Password</button>
+    </div>
+  </div>
+</main>
+<script>
+async function saveProfile(){
+  const name = document.getElementById('p-name').value.trim();
+  const r = await fetch('/api/auth/update_profile',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({full_name:name})
+  });
+  const d=await r.json();
+  if(d.ok){show('prof-ok','Profile updated successfully!');} else show('prof-err',d.error||'Error');
+}
+async function changePassword(){
+  const cur=document.getElementById('pw-cur').value;
+  const nw=document.getElementById('pw-new').value;
+  const cf=document.getElementById('pw-conf').value;
+  if(!cur||!nw){show('pw-err','All fields required');return;}
+  if(nw!==cf){show('pw-err','Passwords do not match');return;}
+  const r=await fetch('/api/auth/update_profile',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({current_password:cur,new_password:nw})
+  });
+  const d=await r.json();
+  if(d.ok){show('pw-ok','Password updated!');document.getElementById('pw-cur').value='';document.getElementById('pw-new').value='';document.getElementById('pw-conf').value='';}
+  else show('pw-err',d.error||'Error');
+}
+function show(id,msg){
+  const el=document.getElementById(id);
+  el.textContent=msg;el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),4000);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ study.topic }} — StudyAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+:root{
+  --ink:#05060a;--ink2:#0b0c15;--ink3:#11131e;--ink4:#161822;
+  --glass:rgba(255,255,255,0.03);--glass2:rgba(255,255,255,0.06);
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --gold:#c9a84c;--gold2:#e8c76a;--gold-glow:rgba(201,168,76,0.1);
+  --steel:#4c9ac9;--steel-glow:rgba(76,154,201,0.1);
+  --violet:#9a7fc9;--violet-glow:rgba(154,127,201,0.1);
+  --rose:#c94c7a;--green:#4cc98c;
+  --txt:#e8e4d9;--txt2:#9b9589;--txt3:#504d46;
+  --r:14px;--r2:9px;--r3:5px;
+  --serif:'Playfair Display',serif;--sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
+  --sidebar:240px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--ink);color:var(--txt);font-family:var(--sans);display:flex;}
+
+.sidebar{width:var(--sidebar);flex-shrink:0;background:var(--ink2);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh;overflow-y:auto;}
+.sidebar-brand{padding:1.4rem 1.2rem 0.9rem;border-bottom:1px solid var(--border);}
+.brand-logo{font-family:var(--serif);font-size:1.2rem;font-weight:700;color:var(--txt);text-decoration:none;display:block;}
+.brand-logo span{color:var(--gold);}
+
+.sidebar-section{padding:0.8rem 0.6rem 0.4rem;}
+.sidebar-section-label{font-family:var(--mono);font-size:0.58rem;font-weight:600;color:var(--txt3);letter-spacing:0.15em;text-transform:uppercase;padding:0 0.6rem;margin-bottom:0.4rem;}
+.sidebar-nav{display:flex;flex-direction:column;gap:2px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:0.55rem 0.7rem;border-radius:var(--r3);font-size:0.82rem;font-weight:500;color:var(--txt2);text-decoration:none;cursor:pointer;transition:all 0.15s;border:none;background:transparent;width:100%;text-align:left;}
+.nav-item:hover{background:var(--glass2);color:var(--txt);}
+.nav-item.active{background:var(--gold-glow);color:var(--gold);}
+.ni{font-size:0.9rem;width:18px;text-align:center;flex-shrink:0;}
+
+.session-info-card{margin:0.8rem;background:var(--glass);border:1px solid var(--border);border-radius:var(--r2);padding:0.9rem;}
+.sic-topic{font-family:var(--serif);font-size:0.85rem;font-weight:700;color:var(--txt);margin-bottom:4px;}
+.sic-cat{font-family:var(--mono);font-size:0.58rem;color:var(--txt3);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;}
+.sic-badge{display:inline-block;background:var(--gold-glow);border:1px solid rgba(201,168,76,0.2);border-radius:4px;padding:2px 8px;font-family:var(--mono);font-size:0.58rem;color:var(--gold);}
+
+.sidebar-bottom{margin-top:auto;padding:0.8rem 0.6rem;border-top:1px solid var(--border);}
+.user-card{display:flex;align-items:center;gap:8px;padding:0.6rem;border-radius:var(--r2);background:var(--glass);border:1px solid var(--border);}
+.user-avatar{width:30px;height:30px;border-radius:50%;background:var(--gold-glow);border:1px solid rgba(201,168,76,0.2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.62rem;color:var(--gold);flex-shrink:0;}
+.user-name{font-size:0.78rem;font-weight:600;color:var(--txt);}
+.logout-btn{margin-left:auto;background:none;border:none;cursor:pointer;color:var(--txt3);font-size:0.8rem;padding:3px;border-radius:3px;transition:color 0.15s;}
+.logout-btn:hover{color:var(--rose);}
+
+.main{flex:1;height:100vh;overflow-y:auto;display:flex;flex-direction:column;}
+.topbar{background:rgba(5,6,10,0.9);border-bottom:1px solid var(--border);padding:0.85rem 1.8rem;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(12px);position:sticky;top:0;z-index:5;flex-shrink:0;}
+.topbar-title{font-family:var(--serif);font-size:0.95rem;font-weight:700;color:var(--txt);}
+.topbar-right{display:flex;align-items:center;gap:0.8rem;}
+.tb-btn{background:var(--glass2);border:1px solid var(--border);border-radius:var(--r3);padding:5px 12px;font-family:var(--sans);font-size:0.75rem;color:var(--txt2);cursor:pointer;transition:all 0.15s;text-decoration:none;}
+.tb-btn:hover{color:var(--gold);border-color:rgba(201,168,76,0.3);}
+.tb-btn.danger:hover{color:var(--rose);}
+
+.content-area{flex:1;padding:1.6rem;}
+
+.session-header{background:var(--ink3);border:1px solid var(--border2);border-radius:var(--r);padding:1.4rem 1.8rem;margin-bottom:1.4rem;}
+.sh-tag{font-family:var(--mono);font-size:0.6rem;color:var(--gold);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:0.4rem;}
+.sh-topic{font-family:var(--serif);font-size:1.5rem;font-weight:700;color:var(--txt);letter-spacing:-0.02em;margin-bottom:0.6rem;}
+.sh-pills{display:flex;gap:8px;flex-wrap:wrap;}
+.meta-pill{display:inline-flex;align-items:center;gap:5px;background:var(--glass2);border:1px solid var(--border);border-radius:99px;padding:4px 11px;font-size:0.74rem;color:var(--txt2);}
+
+.tabs{display:flex;gap:3px;background:var(--glass);border:1px solid var(--border);border-radius:var(--r2);padding:4px;margin-bottom:1.6rem;overflow-x:auto;}
+.tab{flex-shrink:0;padding:7px 15px;border-radius:6px;font-size:0.79rem;font-weight:600;color:var(--txt3);cursor:pointer;transition:all 0.15s;border:none;background:transparent;font-family:var(--sans);letter-spacing:0.03em;}
+.tab:hover{color:var(--txt);}
+.tab.active{background:var(--gold);color:var(--ink);font-weight:700;}
+.tab-content{display:none;}
+.tab-content.active{display:block;}
+
+/* AI content card */
+.ai-card{background:var(--ink3);border:1px solid var(--border2);border-radius:var(--r);overflow:hidden;margin-bottom:1.2rem;}
+.ai-card.steel{border-color:rgba(76,154,201,0.2);}
+.ai-card.violet{border-color:rgba(154,127,201,0.2);}
+.ai-card-header{background:var(--ink4);border-bottom:1px solid var(--border);padding:0.65rem 1.2rem;display:flex;align-items:center;justify-content:space-between;}
+.ai-tag{font-family:var(--mono);font-size:0.6rem;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:var(--gold);display:flex;align-items:center;gap:7px;}
+.ai-tag::before{content:'●';font-size:0.5rem;animation:blink 2s infinite;}
+.ai-card.steel .ai-tag{color:var(--steel);}
+.ai-card.steel .ai-tag::before{color:var(--steel);}
+.ai-card.violet .ai-tag{color:var(--violet);}
+.ai-card.violet .ai-tag::before{color:var(--violet);}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+.ai-card-body{padding:1.5rem 1.8rem;color:var(--txt2);font-size:0.875rem;line-height:1.8;}
+.ai-card-body h1{font-family:var(--serif);font-size:1.4rem;font-weight:700;color:var(--txt);margin:0 0 0.9rem;padding-bottom:0.6rem;border-bottom:1px solid var(--border2);}
+.ai-card-body h2{font-family:var(--serif);font-size:1rem;font-weight:700;color:var(--gold);margin:1.6rem 0 0.5rem;display:flex;align-items:center;gap:7px;}
+.ai-card-body h2::before{content:'▸';font-size:0.6rem;}
+.ai-card.steel .ai-card-body h2{color:var(--steel);}
+.ai-card.steel .ai-card-body h2::before{color:var(--steel);}
+.ai-card.violet .ai-card-body h2{color:var(--violet);}
+.ai-card.violet .ai-card-body h2::before{color:var(--violet);}
+.ai-card-body h3{font-size:0.78rem;font-weight:700;color:var(--steel);text-transform:uppercase;letter-spacing:0.08em;margin:1.2rem 0 0.3rem;}
+.ai-card-body p{margin:0 0 0.7rem;}
+.ai-card-body ul,.ai-card-body ol{padding-left:0;list-style:none;margin:0.4rem 0 0.9rem;}
+.ai-card-body li{position:relative;padding:0.3rem 0 0.3rem 1.4rem;color:var(--txt2);font-size:0.855rem;border-bottom:1px solid rgba(255,255,255,0.02);}
+.ai-card-body ul>li::before{content:'›';position:absolute;left:2px;color:var(--gold);font-weight:700;font-size:1rem;line-height:1.5;}
+.ai-card.steel .ai-card-body ul>li::before{color:var(--steel);}
+.ai-card.violet .ai-card-body ul>li::before{color:var(--violet);}
+.ai-card-body ol{counter-reset:ai;}
+.ai-card-body ol>li::before{content:counter(ai);counter-increment:ai;position:absolute;left:0;top:0.4rem;font-family:var(--mono);font-size:0.6rem;font-weight:600;background:var(--gold-glow);color:var(--gold);border-radius:3px;padding:1px 4px;}
+.ai-card-body strong{color:var(--txt);font-weight:600;}
+.ai-card-body em{color:var(--violet);font-family:var(--serif);font-style:italic;}
+.ai-card-body code{font-family:var(--mono);font-size:0.8rem;background:rgba(0,0,0,0.3);color:var(--gold);padding:2px 6px;border-radius:3px;border:1px solid var(--border2);}
+.ai-card-body pre{background:rgba(0,0,0,0.35);border:1px solid var(--border2);border-radius:var(--r2);padding:1rem 1.2rem;overflow-x:auto;margin:0.8rem 0;}
+.ai-card-body pre code{background:none;border:none;color:var(--txt);padding:0;}
+.ai-card-body blockquote{border-left:3px solid var(--gold);background:var(--gold-glow);margin:0.8rem 0;padding:0.7rem 1rem;border-radius:0 var(--r3) var(--r3) 0;}
+.ai-card-body table{width:100%;border-collapse:collapse;margin:0.8rem 0;font-size:0.84rem;}
+.ai-card-body th{background:var(--ink4);color:var(--gold);font-family:var(--mono);font-size:0.6rem;letter-spacing:0.08em;text-transform:uppercase;padding:8px 11px;border:1px solid var(--border2);}
+.ai-card-body td{padding:7px 11px;border:1px solid var(--border);color:var(--txt2);}
+.ai-card-body a{color:var(--steel);text-decoration:none;border-bottom:1px solid rgba(76,154,201,0.3);}
+.ai-card-body a:hover{color:var(--gold);}
+
+.card-copy-btn{background:var(--glass2);border:1px solid var(--border);border-radius:3px;padding:3px 9px;font-family:var(--mono);font-size:0.58rem;color:var(--txt3);cursor:pointer;transition:all 0.15s;}
+.card-copy-btn:hover{color:var(--gold);border-color:rgba(201,168,76,0.3);}
+
+/* Chat */
+.chat-area{display:flex;flex-direction:column;gap:0.9rem;}
+.chat-bubble-user{background:var(--ink4);border:1px solid var(--border2);border-radius:var(--r2);padding:0.8rem 1.1rem;display:flex;gap:10px;align-items:flex-start;}
+.chat-av{width:28px;height:28px;border-radius:50%;flex-shrink:0;background:var(--gold-glow);border:1px solid rgba(201,168,76,0.2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.6rem;color:var(--gold);}
+.chat-msg{font-size:0.855rem;color:var(--txt2);line-height:1.65;}
+
+/* Quiz controls */
+.quiz-controls{background:var(--ink3);border:1px solid var(--border);border-radius:var(--r);padding:1.2rem;margin-bottom:1.4rem;display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;align-items:end;}
+
+/* Doc zone */
+.doc-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.2rem;}
+.doc-stat{background:var(--ink3);border:1px solid var(--border2);border-radius:var(--r2);padding:0.9rem;position:relative;overflow:hidden;}
+.doc-stat::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;}
+.doc-stat.gold::after{background:var(--gold);}
+.doc-stat.steel::after{background:var(--steel);}
+.doc-stat.violet::after{background:var(--violet);}
+.ds-val{font-family:var(--serif);font-size:1.8rem;font-weight:700;margin-bottom:4px;}
+.doc-stat.gold .ds-val{color:var(--gold);}
+.doc-stat.steel .ds-val{color:var(--steel);}
+.doc-stat.violet .ds-val{color:var(--violet);}
+.ds-lbl{font-family:var(--mono);font-size:0.58rem;color:var(--txt3);letter-spacing:0.1em;text-transform:uppercase;}
+
+.doc-zone{background:var(--glass);border:2px dashed rgba(201,168,76,0.18);border-radius:var(--r);padding:2rem;text-align:center;cursor:pointer;margin-bottom:1.2rem;transition:border-color 0.2s;}
+.doc-zone:hover,.doc-zone.drag-over{border-color:var(--gold);}
+.dz-icon{font-size:2.2rem;margin-bottom:0.5rem;}
+.dz-title{font-family:var(--serif);font-size:0.95rem;font-weight:700;color:var(--txt);margin-bottom:0.25rem;}
+.dz-sub{font-size:0.76rem;color:var(--txt3);}
+
+.file-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:9px;margin-bottom:1.2rem;}
+.file-chip{background:var(--ink3);border:1px solid var(--border2);border-radius:var(--r2);padding:0.7rem;position:relative;animation:su 0.3s ease;}
+@keyframes su{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fc-icon{font-size:1.1rem;margin-bottom:4px;}
+.fc-name{font-size:0.76rem;font-weight:600;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;}
+.fc-meta{font-family:var(--mono);font-size:0.58rem;color:var(--txt3);display:flex;gap:5px;}
+.fc-status{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 4px rgba(76,201,140,0.5);animation:blink 2s infinite;}
+.fc-bar{margin-top:5px;height:2px;background:var(--border);border-radius:99px;overflow:hidden;}
+.fc-bar-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2));width:100%;}
+
+.field{margin-bottom:1.2rem;}
+.field-label{font-family:var(--mono);font-size:0.6rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--txt3);margin-bottom:6px;display:block;}
+.field-input,.field-select,.field-textarea{width:100%;background:var(--ink3);border:1px solid var(--border2);border-radius:var(--r2);padding:0.7rem 0.9rem;font-family:var(--sans);font-size:0.875rem;color:var(--txt);outline:none;transition:border-color 0.2s,box-shadow 0.2s;caret-color:var(--gold);}
+.field-input::placeholder,.field-textarea::placeholder{color:var(--txt3);}
+.field-input:focus,.field-select:focus,.field-textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,168,76,0.07);}
+.field-select option{background:var(--ink2);}
+.field-textarea{resize:vertical;min-height:80px;}
+
+.btn{border:none;border-radius:var(--r2);cursor:pointer;font-family:var(--sans);font-size:0.85rem;font-weight:600;padding:0.7rem 1.6rem;transition:all 0.2s;letter-spacing:0.02em;}
+.btn-primary{background:var(--gold);color:var(--ink);box-shadow:0 4px 14px rgba(201,168,76,0.18);}
+.btn-primary:hover{background:var(--gold2);transform:translateY(-1px);}
+.btn-primary:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+.btn-ghost{background:var(--glass2);color:var(--txt2);border:1px solid var(--border2);}
+.btn-ghost:hover{color:var(--txt);}
+.btn-sm{padding:5px 12px;font-size:0.76rem;}
+
+.action-row{display:flex;gap:0.7rem;align-items:center;flex-wrap:wrap;margin-bottom:1.2rem;}
+
+.regen-btn{background:var(--glass2);border:1px solid var(--border);border-radius:var(--r3);padding:4px 12px;font-family:var(--mono);font-size:0.62rem;color:var(--txt3);cursor:pointer;transition:all 0.15s;}
+.regen-btn:hover{color:var(--gold);border-color:rgba(201,168,76,0.3);}
+
+.empty-rag{text-align:center;padding:3rem 2rem;background:var(--glass);border:1px dashed var(--border2);border-radius:var(--r);}
+.er-icon{font-size:2.5rem;margin-bottom:0.7rem;}
+.er-title{font-family:var(--serif);font-size:1rem;font-weight:700;color:var(--txt2);margin-bottom:0.3rem;}
+.er-sub{font-size:0.78rem;color:var(--txt3);}
+
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;z-index:2000;background:var(--ink3);border:1px solid var(--border2);border-radius:var(--r2);padding:0.8rem 1.2rem;font-size:0.83rem;color:var(--txt);transform:translateY(15px);opacity:0;transition:all 0.3s;pointer-events:none;max-width:300px;}
+.toast.show{transform:translateY(0);opacity:1;}
+.toast.success{border-left:3px solid var(--green);}
+.toast.error{border-left:3px solid var(--rose);}
+.toast.gold{border-left:3px solid var(--gold);}
+
+.loading-bar{height:2px;background:var(--border);border-radius:99px;overflow:hidden;margin-bottom:1rem;}
+.loading-bar-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:99px;width:0%;transition:width 0.4s;animation:loading-pulse 1.5s ease-in-out infinite;}
+@keyframes loading-pulse{0%,100%{opacity:0.6}50%{opacity:1}}
+
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border2);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle;margin-right:6px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <a href="/" class="brand-logo">Study<span>AI</span></a>
+  </div>
+
+  <div class="session-info-card">
+    <div class="sic-cat">{{ study.category }}</div>
+    <div class="sic-topic">{{ study.topic }}</div>
+    <div class="sic-badge">{{ study.knowledge_lvl[:14] }}…</div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">Navigate</div>
+    <nav class="sidebar-nav">
+      <a href="/dashboard" class="nav-item"><span class="ni">🏠</span> Dashboard</a>
+      <a href="/dashboard" class="nav-item" onclick="event.preventDefault();history.back();"><span class="ni">✦</span> New Session</a>
+      <a href="/history"   class="nav-item"><span class="ni">📋</span> History</a>
+      <a href="/profile"   class="nav-item"><span class="ni">👤</span> Profile</a>
+    </nav>
+  </div>
+
+  <div class="sidebar-bottom">
+    <div class="user-card">
+      <div class="user-avatar">{{ user.avatar_seed or user.username[:2].upper() }}</div>
+      <div>
+        <div class="user-name" style="font-size:0.75rem;">{{ user.full_name or user.username }}</div>
+      </div>
+      <button class="logout-btn" onclick="logout()">⏻</button>
+    </div>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div class="topbar-title">{{ study.topic }}</div>
+    <div class="topbar-right">
+      <span style="font-family:var(--mono);font-size:0.62rem;color:var(--txt3);">{{ study.created_at.strftime('%b %d, %Y') }}</span>
+      <button class="tb-btn danger" onclick="deleteSession()">🗑 Delete</button>
+      <a href="/dashboard" class="tb-btn">← Back</a>
+    </div>
+  </div>
+
+  <div class="content-area">
+    <div class="session-header">
+      <div class="sh-tag">Study Session · {{ study.category }}</div>
+      <div class="sh-topic">{{ study.topic }}</div>
+      <div class="sh-pills">
+        <span class="meta-pill">📊 {{ study.knowledge_lvl }}</span>
+        <span class="meta-pill">🕐 {{ study.time_avail.split('(')[0].strip() }}</span>
+        <span class="meta-pill">🎨 {{ study.style }}</span>
+        <span class="meta-pill">⚡ {{ study.provider }}</span>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs" role="tablist">
+      <button class="tab active" onclick="switchTab('roadmap',this)">🗺️ Roadmap</button>
+      <button class="tab" onclick="switchTab('resources',this)">📚 Resources</button>
+      <button class="tab" onclick="switchTab('quiz',this)">⚡ Quiz</button>
+      <button class="tab" onclick="switchTab('tutor',this)">🤖 Tutor</button>
+      <button class="tab" onclick="switchTab('docs',this)">📄 Docs Q&A</button>
+      <button class="tab" onclick="switchTab('analysis',this)">📊 Analysis</button>
+    </div>
+
+    <!-- ROADMAP -->
+    <div class="tab-content active" id="tab-roadmap">
+      <div class="action-row">
+        <button class="regen-btn" onclick="regen('roadmap')">↺ Regenerate</button>
+        <button class="regen-btn" onclick="download('roadmap')">↓ Export MD</button>
+      </div>
+      <div id="roadmap-content">
+        {% if study.roadmap %}
+        <div class="ai-card">
+          <div class="ai-card-header">
+            <div class="ai-tag">Learning Roadmap — {{ study.topic }}</div>
+            <button class="card-copy-btn" onclick="copyContent('roadmap-md')">Copy</button>
+          </div>
+          <div class="ai-card-body" id="roadmap-body"></div>
+        </div>
+        {% else %}
+        <div style="text-align:center;padding:3rem;color:var(--txt2);">No roadmap yet.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- RESOURCES -->
+    <div class="tab-content" id="tab-resources">
+      <div class="action-row">
+        <button class="regen-btn" onclick="regen('resources')">↺ Refresh</button>
+        <button class="regen-btn" onclick="download('resources')">↓ Export MD</button>
+      </div>
+      <div id="resources-content">
+        {% if study.resources %}
+        <div class="ai-card steel">
+          <div class="ai-card-header">
+            <div class="ai-tag">Recommended Resources — {{ study.topic }}</div>
+            <button class="card-copy-btn" onclick="copyContent('resources-md')">Copy</button>
+          </div>
+          <div class="ai-card-body" id="resources-body"></div>
+        </div>
+        {% else %}
+        <div style="text-align:center;padding:3rem;color:var(--txt2);">No resources yet.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- QUIZ -->
+    <div class="tab-content" id="tab-quiz">
+      <div class="quiz-controls">
+        <div class="field">
+          <label class="field-label">Difficulty</label>
+          <select class="field-select" id="q-diff">
+            <option value="Newbie">Newbie</option>
+            <option value="Average Joe" selected>Average Joe</option>
+            <option value="God">God Mode</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Questions</label>
+          <input class="field-input" type="number" id="q-num" value="10" min="3" max="20">
+        </div>
+        <div class="field">
+          <label class="field-label">Focus Areas</label>
+          <input class="field-input" id="q-focus" type="text" placeholder="e.g., loops, recursion…">
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="generateQuiz()">⚡ Generate Quiz</button>
+      <div style="height:1.2rem;"></div>
+      <div id="quiz-content"></div>
+    </div>
+
+    <!-- TUTOR -->
+    <div class="tab-content" id="tab-tutor">
+      <div class="field">
+        <label class="field-label">Your Question</label>
+        <textarea class="field-textarea" id="t-question" placeholder="e.g., Explain recursion with a real-world analogy…" style="min-height:100px;"></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">Additional Context (optional)</label>
+        <input class="field-input" id="t-context" type="text" placeholder="e.g., I'm working on a specific problem…">
+      </div>
+      <button class="btn btn-primary" id="tutor-btn" onclick="askTutor()">💬 Ask Tutor</button>
+      <div style="height:1.2rem;"></div>
+      <div id="tutor-content" class="chat-area"></div>
+    </div>
+
+    <!-- DOCS -->
+    <div class="tab-content" id="tab-docs">
+      <div class="doc-stats">
+        <div class="doc-stat gold">
+          <div class="ds-val" id="doc-chunks">0</div>
+          <div class="ds-lbl">Chunks Indexed</div>
+        </div>
+        <div class="doc-stat steel">
+          <div class="ds-val" id="doc-files">0</div>
+          <div class="ds-lbl">Files Uploaded</div>
+        </div>
+        <div class="doc-stat violet">
+          <div class="ds-val" id="doc-pdfs">0</div>
+          <div class="ds-lbl">PDFs</div>
+        </div>
+      </div>
+
+      <div class="doc-zone" id="doc-zone" onclick="document.getElementById('doc-file-input').click()" ondragover="onDrag(event)" ondrop="onDrop(event)" ondragleave="offDrag()">
+        <div class="dz-icon">📂</div>
+        <div class="dz-title">Drop study materials here</div>
+        <div class="dz-sub">PDF or TXT — lectures, textbooks, notes</div>
+      </div>
+      <input type="file" id="doc-file-input" accept=".pdf,.txt" multiple style="display:none" onchange="uploadFiles(this.files)">
+
+      <div class="file-list" id="file-list"></div>
+
+      <div id="rag-search-area" style="display:none;">
+        <div class="field">
+          <label class="field-label">Ask Your Knowledge Base</label>
+          <textarea class="field-textarea" id="rag-question" placeholder="e.g., Summarize chapter 3 · What are the main formulas? · List key arguments…" style="min-height:80px;"></textarea>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-primary" id="rag-btn" onclick="queryDocs()">🔍 Search Knowledge Base</button>
+          <button class="btn btn-ghost" onclick="clearDocs()">🗑 Clear Docs</button>
+        </div>
+      </div>
+      <div id="rag-empty" class="empty-rag">
+        <div class="er-icon">🧠</div>
+        <div class="er-title">Knowledge base is empty</div>
+        <div class="er-sub">Upload documents to query them with AI</div>
+      </div>
+      <div id="rag-chat" class="chat-area" style="margin-top:1rem;"></div>
+    </div>
+
+    <!-- ANALYSIS -->
+    <div class="tab-content" id="tab-analysis">
+      {% if study.analysis %}
+      <div class="ai-card violet">
+        <div class="ai-card-header">
+          <div class="ai-tag">Learner Analysis</div>
+        </div>
+        <div class="ai-card-body" id="analysis-body"></div>
+      </div>
+      {% else %}
+      <div style="text-align:center;padding:3rem;color:var(--txt2);">No analysis available.</div>
+      {% endif %}
+    </div>
+
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SID = "{{ study.sid }}";
+const AVATAR = "{{ user.avatar_seed or user.username[:2].upper() }}";
+
+// Preload markdown content
+const CONTENT = {
+  roadmap:   {{ study.roadmap|tojson }},
+  resources: {{ study.resources|tojson }},
+  analysis:  {{ study.analysis|tojson }},
+};
+const docMeta = [];
+
+// ── Render on load ──────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  renderMD('roadmap-body',   CONTENT.roadmap);
+  renderMD('resources-body', CONTENT.resources);
+  renderMD('analysis-body',  CONTENT.analysis);
+  loadDocStats();
+});
+
+function renderMD(elId, md){
+  const el = document.getElementById(elId);
+  if(!el || !md) return;
+  el.innerHTML = marked.parse(md);
+  // Make links open in new tab
+  el.querySelectorAll('a').forEach(a => { a.target='_blank'; a.rel='noopener'; });
+}
+
+// ── Tabs ────────────────────────────────────────────────────────────────────
+function switchTab(id, btn){
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── Regen ───────────────────────────────────────────────────────────────────
+async function regen(type){
+  toast('Regenerating '+type+'…','gold');
+  const r = await fetch(`/api/session/${SID}/${type}`, {method:'POST'});
+  const d = await r.json();
+  if(d.ok){
+    CONTENT[type] = d.result;
+    renderMD(type+'-body', d.result);
+    toast(type.charAt(0).toUpperCase()+type.slice(1)+' updated!','success');
+  } else toast(d.error||'Error','error');
+}
+
+// ── Quiz ────────────────────────────────────────────────────────────────────
+async function generateQuiz(){
+  const btn = document.querySelector('#tab-quiz .btn-primary');
+  const diff = document.getElementById('q-diff').value;
+  const num  = document.getElementById('q-num').value;
+  const foc  = document.getElementById('q-focus').value;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Generating…';
+  const r = await fetch(`/api/session/${SID}/quiz`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({difficulty:diff,num_questions:num,focus:foc||'general'})
+  });
+  const d = await r.json();
+  btn.disabled=false;btn.textContent='⚡ Generate Quiz';
+  if(d.ok){
+    const c = document.getElementById('quiz-content');
+    c.innerHTML='';
+    const card = mkAiCard(d.result,`Quiz — ${diff} · ${num} Questions`,'steel');
+    c.appendChild(card);
+  } else toast(d.error||'Failed','error');
+}
+
+// ── Tutor ───────────────────────────────────────────────────────────────────
+async function askTutor(){
+  const q   = document.getElementById('t-question').value.trim();
+  const ctx = document.getElementById('t-context').value.trim();
+  if(!q){toast('Please enter a question','error');return;}
+  const btn = document.getElementById('tutor-btn');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Thinking…';
+  const r = await fetch(`/api/session/${SID}/tutor`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({question:q,context:ctx})
+  });
+  const d = await r.json();
+  btn.disabled=false;btn.textContent='💬 Ask Tutor';
+  if(d.ok){
+    const area = document.getElementById('tutor-content');
+    const bubble = document.createElement('div');
+    bubble.className='chat-bubble-user';
+    bubble.innerHTML=`<div class="chat-av">${AVATAR}</div><div class="chat-msg">${escHtml(q)}</div>`;
+    area.appendChild(bubble);
+    const card = mkAiCard(d.result,'Tutor Response','violet');
+    area.appendChild(card);
+    card.scrollIntoView({behavior:'smooth',block:'nearest'});
+    document.getElementById('t-question').value='';
+    document.getElementById('t-context').value='';
+  } else toast(d.error||'Failed','error');
+}
+
+// ── Docs ────────────────────────────────────────────────────────────────────
+async function uploadFiles(files){
+  for(const file of files){
+    const fd = new FormData();
+    fd.append('file', file);
+    toast(`Uploading ${file.name}…`,'gold');
+    const r = await fetch(`/api/session/${SID}/upload_doc`,{method:'POST',body:fd});
+    const d = await r.json();
+    const info = {name:file.name,size:d.size||'?',type:d.type||'txt',ok:d.ok};
+    docMeta.push(info);
+    renderFileList();
+    updateDocStats(d.chunks||0);
+    if(d.ok) toast(`✓ ${file.name} embedded`,'success');
+    else toast(`✗ Failed: ${file.name}`,'error');
+  }
+  document.getElementById('doc-file-input').value='';
+}
+
+function renderFileList(){
+  const el = document.getElementById('file-list');
+  el.innerHTML = docMeta.map(f=>`
+    <div class="file-chip">
+      <div class="fc-status"></div>
+      <div class="fc-icon">${f.type==='pdf'?'📄':'📝'}</div>
+      <div class="fc-name" title="${f.name}">${f.name}</div>
+      <div class="fc-meta"><span>${f.type.toUpperCase()}</span><span>${f.size} KB</span></div>
+      ${f.ok?'<div class="fc-bar"><div class="fc-bar-fill"></div></div>':''}
+    </div>`).join('');
+  const hasFiles = docMeta.length > 0;
+  document.getElementById('rag-search-area').style.display = hasFiles ? 'block' : 'none';
+  document.getElementById('rag-empty').style.display = hasFiles ? 'none' : 'flex';
+}
+
+function updateDocStats(chunks){
+  document.getElementById('doc-chunks').textContent = chunks;
+  document.getElementById('doc-files').textContent  = docMeta.length;
+  document.getElementById('doc-pdfs').textContent   = docMeta.filter(f=>f.type==='pdf').length;
+}
+
+async function loadDocStats(){
+  try{
+    const r = await fetch(`/api/session/${SID}/data`);
+    const d = await r.json();
+    updateDocStats(d.doc_count||0);
+    if(d.doc_count > 0){
+      document.getElementById('rag-search-area').style.display='block';
+      document.getElementById('rag-empty').style.display='none';
+    }
+  }catch(e){}
+}
+
+function onDrag(e){e.preventDefault();document.getElementById('doc-zone').classList.add('drag-over');}
+function offDrag(){document.getElementById('doc-zone').classList.remove('drag-over');}
+function onDrop(e){
+  e.preventDefault();offDrag();
+  uploadFiles(e.dataTransfer.files);
+}
+
+async function clearDocs(){
+  if(!confirm('Clear all documents from the knowledge base?')) return;
+  await fetch(`/api/session/${SID}/clear_docs`,{method:'POST'});
+  docMeta.length=0;
+  renderFileList();
+  updateDocStats(0);
+  document.getElementById('rag-chat').innerHTML='';
+  toast('Knowledge base cleared','success');
+}
+
+async function queryDocs(){
+  const q = document.getElementById('rag-question').value.trim();
+  if(!q){toast('Please enter a question','error');return;}
+  const btn = document.getElementById('rag-btn');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Searching…';
+  const r = await fetch(`/api/session/${SID}/rag_query`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({question:q})
+  });
+  const d = await r.json();
+  btn.disabled=false;btn.textContent='🔍 Search Knowledge Base';
+  if(d.ok){
+    const area = document.getElementById('rag-chat');
+    const bubble = document.createElement('div');
+    bubble.className='chat-bubble-user';
+    bubble.innerHTML=`<div class="chat-av">${AVATAR}</div><div class="chat-msg">${escHtml(q)}</div>`;
+    area.appendChild(bubble);
+    const card = mkAiCard(d.result,'Answer from Knowledge Base','violet');
+    area.appendChild(card);
+    card.scrollIntoView({behavior:'smooth',block:'nearest'});
+    document.getElementById('rag-question').value='';
+    updateDocStats(d.chunks||0);
+  } else toast(d.error||'Failed','error');
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function mkAiCard(md, tag, variant=''){
+  const card = document.createElement('div');
+  card.className = 'ai-card '+(variant||'');
+  card.innerHTML = `
+    <div class="ai-card-header">
+      <div class="ai-tag">${tag}</div>
+      <button class="card-copy-btn" onclick="navigator.clipboard.writeText(${JSON.stringify(md)})">Copy</button>
+    </div>
+    <div class="ai-card-body"></div>`;
+  card.querySelector('.ai-card-body').innerHTML = marked.parse(md);
+  card.querySelectorAll('a').forEach(a=>{a.target='_blank';a.rel='noopener';});
+  return card;
+}
+
+function escHtml(t){
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function copyContent(id){
+  const key = id.replace('-md','');
+  navigator.clipboard.writeText(CONTENT[key]||'');
+  toast('Copied to clipboard','success');
+}
+
+function download(type){
+  const md = CONTENT[type]||'';
+  const a  = document.createElement('a');
+  a.href   = URL.createObjectURL(new Blob([md],{type:'text/markdown'}));
+  a.download = `${type}_{{ study.topic|replace(' ','_') }}.md`;
+  a.click();
+}
+
+function toast(msg,type='gold'){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.className='toast show '+(type||'');
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove('show'),3000);
+}
+
+async function deleteSession(){
+  if(!confirm('Delete this session and all its data?')) return;
+  await fetch(`/api/session/${SID}/delete`,{method:'DELETE'});
+  window.location.href='/dashboard';
+}
+
+async function logout(){
+  await fetch('/api/auth/logout',{method:'POST'});
+  window.location.href='/';
+}
+</script>
+</body>
+</html>

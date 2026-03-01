@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>About — StudyAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#05060a;--ink2:#0b0c15;--ink3:#11131e;
+  --glass:rgba(255,255,255,0.03);--glass2:rgba(255,255,255,0.06);
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --gold:#c9a84c;--gold2:#e8c76a;--gold-glow:rgba(201,168,76,0.1);
+  --steel:#4c9ac9;--violet:#9a7fc9;
+  --txt:#e8e4d9;--txt2:#9b9589;--txt3:#504d46;
+  --r:14px;--r2:9px;
+  --serif:'Playfair Display',serif;--sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--ink);color:var(--txt);font-family:var(--sans);overflow-x:hidden;}
+nav{position:sticky;top:0;z-index:100;padding:1.1rem 4rem;display:flex;align-items:center;justify-content:space-between;background:rgba(5,6,10,0.85);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);}
+.logo{font-family:var(--serif);font-size:1.4rem;font-weight:700;color:var(--txt);text-decoration:none;}
+.logo span{color:var(--gold);}
+.nav-links{display:flex;align-items:center;gap:2.5rem;}
+.nav-links a{font-size:0.82rem;font-weight:500;color:var(--txt2);text-decoration:none;letter-spacing:0.06em;text-transform:uppercase;transition:color 0.2s;}
+.nav-links a:hover{color:var(--gold);}
+.nav-cta{background:var(--gold);color:var(--ink);padding:0.55rem 1.4rem;border-radius:var(--r2);font-size:0.82rem;font-weight:700;text-decoration:none;transition:all 0.2s;}
+.nav-cta:hover{background:var(--gold2);}
+.nav-cta.outline{background:transparent;color:var(--gold);border:1px solid rgba(201,168,76,0.3);}
+.nav-cta.outline:hover{background:var(--gold-glow);}
+
+section{padding:7rem 4rem;position:relative;}
+.inner{max-width:1100px;margin:0 auto;}
+.eyebrow{font-family:var(--mono);font-size:0.65rem;font-weight:600;color:var(--gold);letter-spacing:0.2em;text-transform:uppercase;display:flex;align-items:center;gap:14px;margin-bottom:1.2rem;}
+.eyebrow::before{content:'';width:28px;height:1px;background:var(--gold);}
+.section-title{font-family:var(--serif);font-size:clamp(2rem,4.5vw,3.2rem);font-weight:700;line-height:1.1;letter-spacing:-0.03em;color:var(--txt);margin-bottom:1.2rem;}
+.section-title em{color:var(--gold);font-style:italic;}
+.section-sub{font-size:1rem;color:var(--txt2);line-height:1.8;max-width:640px;}
+
+/* Hero */
+.about-hero{
+  min-height:60vh;display:flex;align-items:center;
+  background:linear-gradient(135deg,var(--ink) 0%,var(--ink2) 100%);
+  border-bottom:1px solid var(--border);position:relative;overflow:hidden;
+}
+.about-hero::before{
+  content:'';position:absolute;top:-80px;right:-80px;width:500px;height:500px;
+  background:radial-gradient(circle,rgba(201,168,76,0.06) 0%,transparent 60%);pointer-events:none;
+}
+.hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);background-size:60px 60px;mask-image:radial-gradient(ellipse 60% 70% at 80% 50%,black 20%,transparent 70%);}
+.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:5rem;align-items:center;}
+.about-grid-right{position:relative;z-index:1;}
+.stat-stack{display:flex;flex-direction:column;gap:1.2rem;}
+.stat-item{background:var(--glass2);border:1px solid var(--border2);border-radius:var(--r2);padding:1.2rem 1.5rem;display:flex;align-items:center;gap:1.5rem;}
+.si-num{font-family:var(--serif);font-size:2.2rem;font-weight:900;color:var(--gold);flex-shrink:0;width:80px;}
+.si-lbl{font-size:0.9rem;font-weight:600;color:var(--txt);margin-bottom:2px;}
+.si-desc{font-size:0.76rem;color:var(--txt2);}
+
+/* Mission */
+.mission{background:var(--ink2);}
+.mission-body{max-width:760px;font-size:1.1rem;color:var(--txt2);line-height:1.9;}
+.mission-body strong{color:var(--txt);}
+
+/* Tech stack */
+.tech-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:3rem;}
+.tech-card{background:var(--glass);border:1px solid var(--border);border-radius:var(--r2);padding:1.4rem;transition:all 0.2s;}
+.tech-card:hover{border-color:rgba(201,168,76,0.25);background:var(--gold-glow);}
+.tc-icon{font-size:1.8rem;margin-bottom:0.6rem;}
+.tc-name{font-weight:700;color:var(--txt);margin-bottom:0.25rem;font-size:0.9rem;}
+.tc-desc{font-size:0.78rem;color:var(--txt2);line-height:1.6;}
+
+/* Agents */
+.agents-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;margin-top:3rem;}
+.agent-card{background:var(--ink3);border:1px solid var(--border2);border-radius:var(--r2);padding:1.5rem;}
+.ac-icon{font-size:1.5rem;margin-bottom:0.6rem;}
+.ac-name{font-family:var(--serif);font-size:1rem;font-weight:700;color:var(--txt);margin-bottom:0.25rem;}
+.ac-role{font-family:var(--mono);font-size:0.6rem;color:var(--gold);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem;}
+.ac-desc{font-size:0.8rem;color:var(--txt2);line-height:1.65;}
+
+/* Values */
+.values-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:3rem;}
+.val-card{background:var(--glass);border:1px solid var(--border);border-radius:var(--r2);padding:1.5rem;text-align:center;}
+.vc-icon{font-size:2rem;margin-bottom:0.7rem;}
+.vc-name{font-weight:700;color:var(--txt);font-size:0.9rem;margin-bottom:0.3rem;}
+.vc-desc{font-size:0.76rem;color:var(--txt2);line-height:1.6;}
+
+footer{background:var(--ink);border-top:1px solid var(--border);padding:3rem 4rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1.5rem;}
+.footer-logo{font-family:var(--serif);font-size:1.1rem;font-weight:700;color:var(--txt2);}
+.footer-logo span{color:var(--gold);}
+.footer-links{display:flex;gap:2rem;}
+.footer-links a{font-size:0.8rem;color:var(--txt3);text-decoration:none;transition:color 0.2s;}
+.footer-links a:hover{color:var(--gold);}
+.footer-copy{font-family:var(--mono);font-size:0.62rem;color:var(--txt3);}
+
+@media(max-width:900px){
+  nav,section,footer{padding-left:1.5rem;padding-right:1.5rem;}
+  .about-grid{grid-template-columns:1fr;}
+  .tech-grid{grid-template-columns:1fr 1fr;}
+  .agents-grid{grid-template-columns:1fr;}
+  .values-grid{grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">Study<span>AI</span></a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/about" style="color:var(--gold);">About</a>
+  </div>
+  <div style="display:flex;gap:10px;">
+    {% if user %}
+      <a href="/dashboard" class="nav-cta outline">Dashboard</a>
+    {% else %}
+      <a href="/login"    class="nav-cta outline">Sign In</a>
+      <a href="/register" class="nav-cta">Get Started</a>
+    {% endif %}
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="about-hero">
+  <div class="hero-grid"></div>
+  <div class="inner">
+    <div class="about-grid">
+      <div>
+        <div class="eyebrow">Our Story</div>
+        <h1 class="section-title">
+          Built for the<br>
+          <em>curious mind.</em>
+        </h1>
+        <p class="section-sub">
+          StudyAI was born from a simple observation: generic learning resources
+          fail most learners because they ignore the most important variable — <strong style="color:var(--txt)">you</strong>.
+          <br><br>
+          We built a system where multiple specialized AI agents collaborate to understand
+          your exact starting point, craft a learning path just for you, and stay with you
+          every step of the way.
+        </p>
+      </div>
+      <div class="about-grid-right">
+        <div class="stat-stack">
+          <div class="stat-item">
+            <div class="si-num">5</div>
+            <div><div class="si-lbl">Specialized AI Agents</div><div class="si-desc">Each with a distinct role in your learning journey</div></div>
+          </div>
+          <div class="stat-item">
+            <div class="si-num">6+</div>
+            <div><div class="si-lbl">Learning Domains</div><div class="si-desc">From programming to language learning and beyond</div></div>
+          </div>
+          <div class="stat-item">
+            <div class="si-num">RAG</div>
+            <div><div class="si-lbl">Document Intelligence</div><div class="si-desc">Chat with your own study materials using vector search</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MISSION -->
+<section class="mission">
+  <div class="inner">
+    <div class="eyebrow">Mission</div>
+    <h2 class="section-title">Why we exist</h2>
+    <div class="mission-body">
+      <p>Learning should be <strong>personal</strong>. Not a YouTube playlist. Not a generic curriculum.
+      Not a one-size-fits-all course that assumes you're starting from zero or a genius.</p>
+      <br>
+      <p>StudyAI combines <strong>multi-agent AI systems</strong>, <strong>retrieval-augmented generation</strong>,
+      and a deep understanding of learning psychology to build an experience that adapts to your
+      knowledge level, schedule, goals, and learning style.</p>
+      <br>
+      <p>We believe that with the right AI system, <strong>anyone can master anything</strong> —
+      given enough time and the right structure.</p>
+    </div>
+  </div>
+</section>
+
+<!-- AGENTS -->
+<section>
+  <div class="inner">
+    <div class="eyebrow">The System</div>
+    <h2 class="section-title">Meet the <em>agents</em></h2>
+    <p class="section-sub">Five specialized AI agents collaborate behind the scenes to power your learning experience.</p>
+    <div class="agents-grid">
+      <div class="agent-card">
+        <div class="ac-icon">🔍</div>
+        <div class="ac-name">Student Analyzer</div>
+        <div class="ac-role">Educational Psychologist</div>
+        <div class="ac-desc">Assesses your current knowledge level, identifies gaps and prerequisites, evaluates the feasibility of your goals, and recommends the optimal approach for your learning style.</div>
+      </div>
+      <div class="agent-card">
+        <div class="ac-icon">🗺️</div>
+        <div class="ac-name">Roadmap Creator</div>
+        <div class="ac-role">Curriculum Designer</div>
+        <div class="ac-desc">Builds a structured, phased learning path with clear milestones, estimated timeframes, and logical progression from your starting point to your goal.</div>
+      </div>
+      <div class="agent-card">
+        <div class="ac-icon">📚</div>
+        <div class="ac-name">Resource Finder</div>
+        <div class="ac-role">Research Specialist</div>
+        <div class="ac-desc">Searches the web in real-time to find and curate the highest-quality learning resources — courses, books, tutorials, and communities — matched to your needs.</div>
+      </div>
+      <div class="agent-card">
+        <div class="ac-icon">⚡</div>
+        <div class="ac-name">Quiz Generator</div>
+        <div class="ac-role">Assessment Designer</div>
+        <div class="ac-desc">Creates adaptive practice questions at the right difficulty, with multiple formats, and detailed explanations that reinforce conceptual understanding.</div>
+      </div>
+      <div class="agent-card" style="grid-column:span 2;">
+        <div class="ac-icon">🤖</div>
+        <div class="ac-name">Personal Tutor + RAG Tutor</div>
+        <div class="ac-role">Patient Educator</div>
+        <div class="ac-desc">Answers any question with step-by-step clarity, real-world analogies, and tailored explanations. The RAG variant grounds its answers in your uploaded documents, citing specific sections.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TECH -->
+<section style="background:var(--ink2);">
+  <div class="inner">
+    <div class="eyebrow">Technology</div>
+    <h2 class="section-title">Built on <em>solid foundations</em></h2>
+    <div class="tech-grid">
+      <div class="tech-card">
+        <div class="tc-icon">⚗️</div>
+        <div class="tc-name">Flask + Python</div>
+        <div class="tc-desc">Lightweight, high-performance web backend powering all API routes, authentication, and session management.</div>
+      </div>
+      <div class="tech-card">
+        <div class="tc-icon">🦙</div>
+        <div class="tc-name">Groq + LLaMA</div>
+        <div class="tc-desc">Ultra-fast inference with LLaMA 3.3 70B and Mixtral models via Groq's LPU hardware. Free and remarkably capable.</div>
+      </div>
+      <div class="tech-card">
+        <div class="tc-icon">🧠</div>
+        <div class="tc-name">OpenAI GPT</div>
+        <div class="tc-desc">Access GPT-4o and GPT-3.5 Turbo as an alternative provider for maximum model capability.</div>
+      </div>
+      <div class="tech-card">
+        <div class="tc-icon">🔍</div>
+        <div class="tc-name">ChromaDB + HuggingFace</div>
+        <div class="tc-desc">Local vector embeddings using sentence-transformers (all-MiniLM-L6-v2). No API key needed for RAG — runs fully on CPU.</div>
+      </div>
+      <div class="tech-card">
+        <div class="tc-icon">🔗</div>
+        <div class="tc-name">LangChain</div>
+        <div class="tc-desc">Document loading, text splitting, and vector store integration for the document Q&A pipeline.</div>
+      </div>
+      <div class="tech-card">
+        <div class="tc-icon">🤿</div>
+        <div class="tc-name">Agno (phidata)</div>
+        <div class="tc-desc">Multi-agent orchestration framework enabling specialized agent creation with DuckDuckGo web search capabilities.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- VALUES -->
+<section>
+  <div class="inner">
+    <div class="eyebrow">Principles</div>
+    <h2 class="section-title">What we <em>believe</em></h2>
+    <div class="values-grid">
+      <div class="val-card">
+        <div class="vc-icon">🎯</div>
+        <div class="vc-name">Personalization First</div>
+        <div class="vc-desc">No two learners are the same. Every plan should be unique.</div>
+      </div>
+      <div class="val-card">
+        <div class="vc-icon">🔓</div>
+        <div class="vc-name">Accessible</div>
+        <div class="vc-desc">World-class AI education shouldn't require a $200/month subscription.</div>
+      </div>
+      <div class="val-card">
+        <div class="vc-icon">⚡</div>
+        <div class="vc-name">Fast Iteration</div>
+        <div class="vc-desc">Learning is experimentation. Test, adjust, improve.</div>
+      </div>
+      <div class="val-card">
+        <div class="vc-icon">🔒</div>
+        <div class="vc-name">Your Data, Local</div>
+        <div class="vc-desc">Documents stay on your machine. RAG runs locally, no cloud upload.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-logo">Study<span>AI</span></div>
+  <div class="footer-links">
+    <a href="/">Home</a><a href="/about">About</a>
+    <a href="/login">Login</a><a href="/register">Register</a>
+  </div>
+  <div class="footer-copy">© 2025 StudyAI · Powered by Groq & OpenAI</div>
+</footer>
+</body>
+</html>
