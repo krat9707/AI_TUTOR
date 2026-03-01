@@ -69,12 +69,6 @@ class Interaction(db.Model):
     answer     = db.Column(db.Text,  default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    def __init__(self, session_id: int, kind: str = "chat", question: str = "", answer: str = ""):
-        self.session_id = session_id
-        self.kind       = kind
-        self.question   = question
-        self.answer     = answer
-
 # ── In-memory handler store ────────────────────────────────────────────────────
 _handlers: dict = {}
 
