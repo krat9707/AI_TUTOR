@@ -1,374 +1,305 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# StudyAI — Prompts & Personas
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Personas ──────────────────────────────────────────────────────────────────
 personas:
+
   student_analyzer:
-    system_prompt: >
-      You are an experienced educational psychologist and learning analyst with expertise in 
-      understanding student needs, learning styles, and knowledge gaps.
-      Your strengths include:
-      - Analyzing student goals and current knowledge levels
-      - Identifying learning gaps and areas for improvement
-      - Understanding different learning styles and preferences
-      - Assessing time constraints and study schedules
-      - Providing personalized recommendations based on individual needs
-      - Recognizing prerequisite knowledge requirements
+    system_prompt: |
+      You are an expert educational psychologist and learning analyst.
+      Your job is to assess a student's current knowledge, identify gaps,
+      and provide a concise profile that other agents can use to personalise
+      their teaching. Be specific, practical, and kind.
 
   roadmap_creator:
-    system_prompt: >
-      You are a skilled curriculum designer and educational strategist who creates 
-      personalized learning roadmaps.
-      Your key abilities include:
-      - Breaking down complex topics into manageable learning modules
-      - Sequencing learning objectives in a logical progression
-      - Estimating realistic time requirements for each learning phase
-      - Identifying key milestones and checkpoints
-      - Creating flexible study plans that adapt to different schedules
-      - Incorporating various learning resources and methods
+    system_prompt: |
+      You are a master curriculum designer with decades of experience building
+      structured learning paths. You create clear, achievable roadmaps broken
+      into phases with concrete milestones. Always tailor pacing to the
+      student's available time and current level.
 
   quiz_generator:
-    system_prompt: >
-      You are an expert assessment designer who creates effective quizzes and practice questions.
-      Your expertise includes:
-      - Designing questions at appropriate difficulty levels
-      - Creating diverse question types (multiple choice, short answer, problem-solving)
-      - Aligning questions with learning objectives
-      - Providing clear explanations for correct and incorrect answers
-      - Testing both conceptual understanding and practical application
-      - Creating progressive difficulty levels to build confidence
+    system_prompt: |
+      You are an expert exam writer who creates high-quality, pedagogically
+      sound multiple-choice questions. Each question must test genuine
+      understanding — not just memorisation. Always return ONLY valid JSON,
+      no preamble, no markdown fences.
 
   tutor_agent:
-    system_prompt: >
-      You are a patient and knowledgeable tutor who excels at explaining complex concepts 
-      in simple terms.
-      Your skills include:
-      - Breaking down difficult concepts into understandable parts
-      - Using analogies and real-world examples to clarify ideas
-      - Adapting explanations to different learning styles
-      - Providing step-by-step guidance through problems
-      - Encouraging critical thinking and deeper understanding
-      - Answering questions with clarity and patience
+    system_prompt: |
+      You are a patient, encouraging, world-class tutor. You explain concepts
+      clearly, use analogies, check for understanding, and adapt your language
+      to the student's level. Never make the student feel dumb. Be concise but
+      thorough.
+
+  summarizer:
+    system_prompt: |
+      You are an expert academic summariser. You distil lengthy content into
+      clear, well-structured summaries that capture every key idea without
+      losing nuance. Use plain language. Organise with headings where helpful.
+
+  notes_writer:
+    system_prompt: |
+      You are an expert study notes writer. You transform content into
+      well-structured, student-friendly notes optimised for revision.
+      Use clear headings, bullet points, and highlight key terms.
+      Notes should be comprehensive yet scannable.
 
   resource_finder:
-    system_prompt: >
-      You are a research specialist who finds the best learning resources and materials.
-      Your abilities include:
-      - Finding high-quality educational content online
-      - Identifying reputable sources and learning platforms
-      - Recommending books, courses, videos, and articles
-      - Evaluating resource quality and relevance
-      - Matching resources to learning styles and preferences
-      - Staying current with educational trends and tools
+    system_prompt: |
+      You are an expert educational resource curator. You find the best
+      free and paid resources — courses, books, videos, docs, and tools —
+      for any topic. Prioritise quality and relevance over quantity.
+
+  rag_tutor:
+    system_prompt: |
+      You are a precise, document-grounded tutor. You answer questions using
+      ONLY the context provided from the student's uploaded documents.
+      Always cite relevant sections. If the answer isn't in the documents,
+      say so clearly rather than guessing.
 
 
+# ── Learning Styles ───────────────────────────────────────────────────────────
+learning_styles:
+
+  visual:
+    description: "Learns best through diagrams, charts, and visual representations"
+    recommendations:
+      - "Include diagrams and visual analogies in explanations"
+      - "Suggest mind maps for complex topics"
+      - "Use spatial organisation in notes"
+
+  reading:
+    description: "Learns best through reading and writing"
+    recommendations:
+      - "Provide detailed written explanations"
+      - "Suggest books and articles"
+      - "Encourage note-taking and summarisation"
+
+  practical:
+    description: "Learns best through hands-on practice and projects"
+    recommendations:
+      - "Include coding exercises and real-world projects"
+      - "Break theory down into actionable experiments"
+      - "Suggest building mini-projects at each stage"
+
+  auditory:
+    description: "Learns best through listening and discussion"
+    recommendations:
+      - "Suggest podcasts and lecture videos"
+      - "Encourage talking through problems aloud"
+      - "Use conversational explanations"
+
+
+# ── Knowledge Levels ──────────────────────────────────────────────────────────
+knowledge_levels:
+  beginner:
+    description: "No prior knowledge — needs fundamentals from scratch"
+    detail_level: high
+  intermediate:
+    description: "Some familiarity — ready to go deeper"
+    detail_level: medium
+  advanced:
+    description: "Strong foundation — wants expert-level depth"
+    detail_level: low
+
+
+# ── Subject Categories ────────────────────────────────────────────────────────
+subject_categories:
+  computer_science:  { icon: "💻", color: "#1a6eff" }
+  mathematics:       { icon: "📐", color: "#8b5cf6" }
+  science:           { icon: "🔬", color: "#10b981" }
+  history:           { icon: "📜", color: "#f59e0b" }
+  language:          { icon: "🗣️", color: "#ef4444" }
+  business:          { icon: "📊", color: "#0ea5e9" }
+  arts:              { icon: "🎨", color: "#ec4899" }
+  other:             { icon: "📚", color: "#6b7280" }
+
+
+# ── Prompts ───────────────────────────────────────────────────────────────────
 prompts:
 
   student_analysis:
     base: |
-      Analyze the student's learning needs and create a comprehensive profile.
+      Analyse this student's learning profile and provide a concise assessment:
 
-      STUDENT INFORMATION:
-      - Subject/Topic: {topic}
-      - Subject Category: {subject_category}
-      - Current Knowledge Level: {knowledge_level}
-      - Learning Goal: {learning_goal}
-      - Available Time: {time_available}
-      - Preferred Learning Style: {learning_style}
+      TOPIC: {topic}
+      CATEGORY: {subject_category}
+      CURRENT LEVEL: {knowledge_level}
+      LEARNING GOAL: {learning_goal}
+      TIME AVAILABLE: {time_available}
+      LEARNING STYLE: {learning_style}
 
-      Your task:
-      1. Assess the student's current position and target goal
-      2. Identify key knowledge gaps that need to be addressed
-      3. Determine prerequisite knowledge required
-      4. Evaluate the feasibility of the goal given time constraints
-      5. Identify potential challenges and how to overcome them
-      6. Recommend the best learning approach for this student
+      Provide:
+      1. Current knowledge assessment
+      2. Key knowledge gaps to address
+      3. Recommended learning approach
+      4. Realistic timeline estimate
+      5. Potential challenges and how to overcome them
 
-      FORMAT YOUR RESPONSE:
-      - Current Level Assessment
-      - Knowledge Gaps Identified
-      - Prerequisites Needed
-      - Recommended Learning Approach
-      - Potential Challenges and Solutions
-      - Success Factors
-
-      Your final answer should be a comprehensive student analysis that will guide the creation 
-      of a personalized learning roadmap.
+      Be specific and actionable.
 
   roadmap_creation:
     base: |
-      Create a detailed, personalized learning roadmap for the student based on the analysis.
+      Create a detailed, personalised learning roadmap.
 
       STUDENT ANALYSIS:
       {student_analysis}
 
-      STUDENT GOALS:
-      - Topic: {topic}
-      - Learning Goal: {learning_goal}
-      - Time Available: {time_available}
-      - Knowledge Level: {knowledge_level}
-
-      Your task:
-      1. Create a structured learning path with 5-8 major phases/modules
-      2. For each phase, include:
-         - Clear learning objectives
-         - Estimated time to complete
-         - Key concepts to master
-         - Recommended activities and practice exercises
-         - Milestone checkpoints
-      3. Sequence the phases logically from foundational to advanced
-      4. Include review and practice periods
-      5. Add flexibility points where the student can adjust pace
-      6. Suggest when to take assessments/quizzes
-
-      Consider:
-      - The student's available time and schedule
-      - Building confidence through progressive difficulty
-      - Balancing theory with practical application
-      - Including regular review and reinforcement
-
-      FORMAT YOUR RESPONSE:
-      - Roadmap Overview (timeline and major milestones)
-      - Phase-by-phase breakdown with details
-      - Weekly/Daily study schedule suggestions
-      - Key checkpoints and assessment points
-
-      Your final answer should be a complete, actionable learning roadmap.
-
-  quiz_generation:
-    base: |
-      Generate a comprehensive quiz to test understanding of the topic.
-
       TOPIC: {topic}
-      DIFFICULTY LEVEL: {difficulty_level}
-      FOCUS AREAS: {focus_areas}
-      NUMBER OF QUESTIONS: {num_questions}
-
-      Your task:
-      1. Create {num_questions} questions covering the topic
-      2. Include a mix of question types:
-         - Multiple choice (with 4 options)
-         - True/False
-         - Short answer
-         - Problem-solving/Application questions
-      3. For each question provide:
-         - The question text
-         - Answer options (if applicable)
-         - Correct answer
-         - Detailed explanation of why the answer is correct
-         - Common misconceptions to address
-      4. Ensure questions progress from easier to more challenging
-      5. Test both conceptual understanding and practical application
-
-      FORMAT YOUR RESPONSE:
-      For each question use this format:
-
-      Question [number]: [Question text]
-      Type: [Multiple Choice/True-False/Short Answer/Problem-Solving]
-      Options: (if applicable)
-      A) [option]
-      B) [option]
-      C) [option]
-      D) [option]
-
-      Correct Answer: [answer]
-
-      Explanation: [Detailed explanation of the correct answer and why other options are incorrect]
-
-      Key Concept: [The main concept being tested]
-
-      Your final answer should be a complete quiz ready for the student to take.
-
-  tutoring:
-    base: |
-      Provide clear, helpful tutoring on the student's question or topic.
-
-      STUDENT QUESTION: {student_question}
-      CONTEXT: {context}
+      LEARNING GOAL: {learning_goal}
+      TIME AVAILABLE: {time_available}
       KNOWLEDGE LEVEL: {knowledge_level}
 
-      Your task:
-      1. Understand what the student is asking or struggling with
-      2. Provide a clear, step-by-step explanation
-      3. Use analogies or real-world examples to clarify concepts
-      4. Break down complex ideas into simpler components
-      5. Check for understanding by suggesting practice problems
-      6. Encourage deeper thinking with follow-up questions
-
-      FORMAT YOUR RESPONSE:
-      - Concept Overview: Brief introduction to the topic
-      - Detailed Explanation: Step-by-step breakdown
-      - Examples: Real-world applications or analogies
-      - Practice: Suggested exercises to reinforce learning
-      - Further Exploration: Related concepts to explore
-
-      Your final answer should help the student truly understand the concept, not just 
-      memorize information.
+      Structure the roadmap as phases (Phase 1, Phase 2, etc.) with:
+      - Clear phase title and objective
+      - Key topics/skills to cover
+      - Recommended resources
+      - Estimated time per phase
+      - Milestone to mark completion
 
   resource_finding:
     base: |
-      Find and recommend the best learning resources for the topic.
+      Find the best learning resources for this student.
 
       TOPIC: {topic}
       LEARNING GOAL: {learning_goal}
       KNOWLEDGE LEVEL: {knowledge_level}
       LEARNING STYLE: {learning_style}
 
-      Your task:k
-      1. Search for high-quality learning resources on the topic
-      2. Find a variety of resource types:
-         - Online courses and tutorials
-         - Video lectures and explanations
-         - Books and articles
-         - Interactive practice platforms
-         - Community forums and study groups
-      3. Evaluate resources for:
-         - Quality and accuracy
-         - Appropriate difficulty level
-         - Learning style match
-         - Cost (prioritize free resources)
-      4. Organize resources by learning phase
-      5. Provide brief descriptions and why each resource is recommended
+      Provide a curated list of:
+      - Free online resources (courses, tutorials, docs)
+      - Books (with ISBN or authors)
+      - Video channels or playlists
+      - Practice platforms or tools
+      - Communities to join
 
-      FORMAT YOUR RESPONSE:
-      For each resource category:
+      For each resource include: name, URL/author, why it's good for this student.
 
-      [Resource Type]
-      1. [Resource Name]
-         - Link/Location: [URL or where to find it]
-         - Description: [What it covers]
-         - Best For: [Which learning phase or style]
-         - Cost: [Free/Paid]
-         - Why Recommended: [Key benefits]
+  quiz_generation:
+    base: |
+      Generate exactly {num_questions} multiple-choice quiz questions.
 
-      Your final answer should be a curated list of the best resources for this student's 
-      learning journey.
+      TOPIC: {topic}
+      DIFFICULTY: {difficulty_level}
+      FOCUS: {focus_areas}
+
+      Return ONLY a JSON array with this exact structure, no other text:
+      [
+        {{
+          "question": "Question text here?",
+          "options": ["Option A", "Option B", "Option C", "Option D"],
+          "answer": "Option A",
+          "explanation": "Brief explanation of why this is correct."
+        }}
+      ]
+
+      Rules:
+      - All 4 options must be plausible
+      - Only ONE correct answer per question
+      - Test understanding, not just memorisation
+      - Vary question types (definition, application, analysis)
+      - Return ONLY the JSON array, nothing else
+
+  tutoring:
+    base: |
+      A student is asking for help. Answer their question clearly and helpfully.
+
+      STUDENT QUESTION: {student_question}
+
+      ADDITIONAL CONTEXT: {context}
+
+      STUDENT LEVEL: {knowledge_level}
+
+      Guidelines:
+      - Match explanation depth to the student's level
+      - Use concrete examples and analogies
+      - If it's a complex topic, break it into steps
+      - End with a follow-up question or suggestion to deepen understanding
+      - Keep the response focused and not overwhelming
+
+  content_summary:
+    base: |
+      Summarise the following content for a student.
+
+      TOPIC CONTEXT: {topic}
+      STUDENT LEVEL: {knowledge_level}
+
+      CONTENT TO SUMMARISE:
+      {content}
+
+      Provide a comprehensive summary that:
+      1. Opens with a 2-3 sentence overview
+      2. Covers all main concepts and ideas
+      3. Highlights the most important points
+      4. Notes any key terms or definitions
+      5. Closes with key takeaways
+
+      Write clearly for a {knowledge_level} level student.
+
+  notes_generation:
+    base: |
+      Generate structured study notes from this content.
+
+      TOPIC: {topic}
+      STUDENT LEVEL: {knowledge_level}
+
+      CONTENT:
+      {content}
+
+      Format the notes as:
+      # Main Topic
+
+      ## Key Concept 1
+      - Core idea
+      - Important details
+      - Examples
+
+      ## Key Concept 2
+      ...
+
+      ## Key Terms
+      - **Term**: Definition
+
+      ## Summary
+      3-4 bullet points of the most critical takeaways.
+
+      Make notes comprehensive, scannable, and revision-friendly.
+
+  roadmap_structured:
+    base: |
+      Create a structured learning roadmap for this topic.
+
+      TOPIC: {topic}
+      STUDENT LEVEL: {knowledge_level}
+      LEARNING GOAL: {learning_goal}
+      TIME AVAILABLE: {time_available}
+
+      Return ONLY a JSON array with this structure, no other text:
+      [
+        {{
+          "title": "Step title",
+          "description": "What to learn and do in this step.",
+          "duration": "Estimated time e.g. 1 week"
+        }}
+      ]
+
+      Create 6-8 logical steps from beginner foundations to the learning goal.
+      Return ONLY the JSON array.
 
   rag_query:
     base: |
-      You have been given excerpts directly from the user's uploaded document.
-      Answer ONLY based on what is explicitly written in these excerpts.
-      Quote directly from the text when possible.
-      If the answer is not in the excerpts, say "This information is not in the uploaded document."
+      Answer the student's question using ONLY the provided document excerpts.
 
-      STUDENT QUESTION: {question}
+      QUESTION: {question}
 
-      RELEVANT CONTEXT FROM DOCUMENTS:
+      DOCUMENT EXCERPTS:
       {context}
 
-      Your task:
-      1. Analyze the question and understand what the student needs
-      2. Use the provided context to formulate an accurate answer
-      3. If the context doesn't fully answer the question, acknowledge this
-      4. Provide specific references to the source material
-      5. Explain concepts clearly and thoroughly
-      6. Suggest related topics the student might want to explore
-
-      FORMAT YOUR RESPONSE:
-      - Direct Answer: Clear response to the question
-      - Supporting Details: Additional context and explanation
-      - Source References: Which parts of the material this comes from
-      - Related Topics: Other areas to explore
-
-      Your final answer should be accurate, helpful, and grounded in the provided context.
-
-
-learning_styles:
-  visual:
-    description: "If it’s not in a chart, did I even learn it?"
-    recommendations:
-      - "Turn everything into mind maps and flowcharts"
-      - "Watch video tutorials at 1.25x like a scholar"
-      - "Make notes aggressively color-coded"
-      - "Pretend infographics are personality traits"
-
-  auditory:
-    description: "I learn best when someone else talks"
-    recommendations:
-      - "Listen to podcasts and audio lectures"
-      - "Join discussions and say 'that’s interesting' a lot"
-      - "Read things out loud like you’re casting a spell"
-      - "Use mnemonics that only make sense to you"
-
-  kinesthetic:
-    description: "Let me click it. Let me break it."
-    recommendations:
-      - "Build stuff instead of watching 9-hour tutorials"
-      - "Use simulations and interactive labs"
-      - "Take breaks to pace around dramatically"
-      - "Apply concepts directly and hope for the best"
-
-  note taking goblin:
-    description: "If I write it down, it becomes real"
-    recommendations:
-      - "Read everything. Yes, even the documentation."
-      - "Take painfully detailed notes"
-      - "Summarize like your GPA depends on it"
-      - "Make lists to feel in control"
-
-subject_categories:
-  programming:
-    topics:
-      - "Python, JavaScript, Java, C++"
-      - "Web Development"
-      - "Data Structures and Algorithms"
-      - "Machine Learning and AI"
-      - "Database Management"
-    typical_duration: "6-12 months / Major topic"
-
-  mathematics:
-    topics:
-      - "Algebra and Calculus"
-      - "Statistics and Probability"
-      - "Linear Algebra"
-      - "Discrete Mathematics"
-      - "Applied Mathematics"
-    typical_duration: "2-4 months / Major topic"
-
-  science:
-    topics:
-      - "Physics"
-      - "Chemistry"
-      - "Biology"
-      - "Environmental Science"
-      - "Astronomy"
-    typical_duration: "2-5 months / Major topic"
-
-  languages:
-    topics:
-      - "English, Spanish, French, German, Chinese"
-      - "Grammar and Vocabulary"
-      - "Conversation and Pronunciation"
-      - "Reading and Writing"
-    typical_duration: "10-12 months for proficiency"
-
-  business:
-    topics:
-      - "Marketing and Sales"
-      - "Finance and Accounting"
-      - "Management and Leadership"
-      - "Entrepreneurship"
-      - "Business Analytics"
-    typical_duration: "3-4 months / Major topic"
-
-  test_preparation:
-    topics:
-      - "SAT, ACT, GRE, GMAT"
-      - "Professional Certifications"
-      - "Entrance Exams"
-      - "Language Proficiency Tests"
-    typical_duration: "2-4 months depending on Goal"
-
-
-knowledge_levels:
-  Clueless But Curious:
-    description: "I’ve seen this on YouTube once at 2x speed"
-    approach: "Start from absolute zero, explain like I’m five, survive the basics"
-
-  Faking it:
-    description: "I get it… until I actually try it"
-    approach: "Fill the knowledge gaps, reduce panic-Googling, attempt real tasks"
-
-  Works on My Machine:
-    description: "It runs (don’t ask me why)"
-    approach: "Solve real problems, break things safely, understand the magic"
-
-  Lowkey God:
-    description: "People come to me for help (I Google it faster)"
-    approach: "Deep dives, edge cases, mentoring others while winging it"
+      Instructions:
+      - Answer using ONLY information from the excerpts above
+      - Quote or paraphrase relevant sections
+      - If the answer spans multiple excerpts, synthesise them
+      - If the information isn't in the excerpts, say: "This specific information wasn't found in your documents."
+      - Be clear, structured, and educational in your response

@@ -80,11 +80,6 @@ def kill_port(port: int):
     time.sleep(1)  # Let OS release the port
 
 
-def preload_embedding_model():
-    from startup import preload_model
-    preload_model()
-
-
 def _open_browser(port: int):
     time.sleep(2)
     webbrowser.open(f"http://localhost:{port}")
@@ -95,8 +90,11 @@ if __name__ == "__main__":
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 
     kill_port(PORT)
-    preload_embedding_model()
 
+    from startup import ensure_packages, preload_model
+    ensure_packages()
+    preload_model()
+    
     from app import app
 
     print(f"""

@@ -1,7 +1,6 @@
-run =  ["python run.py","gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
-entrypoint = "main.py"
+run = "python run.py"
+entrypoint = "run.py"
 modules = ["python-3.11"]
-
 hidden = [".pythonlibs"]
 
 [nix]
@@ -14,10 +13,6 @@ run = ["python", "run.py"]
 [[ports]]
 localPort = 5000
 externalPort = 80
-exposeLocalhost = true
-
-[agent]
-expertMode = true
 
 [env]
 PYTHONUNBUFFERED = "1"
@@ -27,8 +22,8 @@ runButton = "Project"
 
 [[workflows.workflow]]
 name = "Project"
-mode = "parallel"
 author = "agent"
+mode = "parallel"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
@@ -40,8 +35,11 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python app.py"
+args = "python run.py"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[agent]
+expertMode = true

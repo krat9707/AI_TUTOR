@@ -1,12 +1,17 @@
 """
 StudyAI — Agent Handler
-Bridges the Flask routes with the AI agents and RAG pipeline.
-All heavy lifting is done here; routes just call these methods.
+All AI methods live here. Talks to StudyAgents for model/agent construction
+and to RAGHelper for document retrieval.
 """
 
 import os
+import json
+import re
 import yaml
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rag_helper import RAGHelper
 
 
 class StudyAssistantHandler:
@@ -21,17 +26,16 @@ class StudyAssistantHandler:
         model_name: str = "llama-3.3-70b-versatile",
         provider: str = "groq",
     ):
-        self.topic = topic
+        self.topic            = topic
         self.subject_category = subject_category
-        self.knowledge_level = knowledge_level
-        self.learning_goal = learning_goal
-        self.time_available = time_available
-        self.learning_style = learning_style
-        self.model_name = model_name
-        self.provider = provider
-        self.rag_helper: Optional[object] = None
+        self.knowledge_level  = knowledge_level
+        self.learning_goal    = learning_goal
+        self.time_available   = time_available
+        self.learning_style   = learning_style
+        self.model_name       = model_name
+        self.provider         = provider
+        self.rag_helper: Optional["RAGHelper"] = None
 
-        # Import here so env vars are already set before model init
         from study_agents import StudyAgents
         self.agents = StudyAgents(
             topic, subject_category, knowledge_level, learning_goal,
@@ -44,161 +48,295 @@ class StudyAssistantHandler:
     def _load_config(self) -> dict:
         base = os.path.dirname(os.path.abspath(__file__))
         path = os.path.join(base, "prompts.yaml")
-        with open(path, "r") as f:
-            return yaml.safe_load(f)
+        try:
+            with open(path, "r") as f:
+                return yaml.safe_load(f) or {}
+        except FileNotFoundError:
+            print(f"[Handler] WARNING: prompts.yaml not found at {path}")
+            return {}
 
-    def _fmt(self, tpl: str, **kw) -> str:
-        """Safe format — ignore missing keys rather than raising KeyError."""
+    def _prompt(self, key: str, **kw) -> str:
+        tpl = (self.config
+               .get("prompts", {})
+               .get(key, {})
+               .get("base", f"Please help with: {key}"))
         try:
             return tpl.format(**kw)
         except KeyError as e:
-            print(f"[Handler] Missing prompt key: {e}")
+            print(f"[Handler] Missing prompt key {e} in '{key}'")
             return tpl
 
     def _run_agent(self, agent, prompt: str) -> str:
-        """Run an agent and extract its text content safely."""
         try:
             resp = agent.run(prompt, stream=False)
-            # agno: resp.content is a list of message objects OR a plain string
             if hasattr(resp, "content"):
                 c = resp.content
                 if isinstance(c, str):
-                    return c
+                    return c.strip()
                 if isinstance(c, list):
-                    # Extract text from agno message content blocks
                     parts = []
                     for block in c:
                         if isinstance(block, str):
                             parts.append(block)
                         elif hasattr(block, "text"):
-                            parts.append(block.text)
+                            parts.append(str(block.text))
                         elif hasattr(block, "content"):
                             parts.append(str(block.content))
-                    return "\n".join(parts)
-                return str(c)
-            # phidata plain string response
-            return str(resp)
+                    return "\n".join(parts).strip()
+                return str(c).strip()
+            return str(resp).strip()
         except Exception as e:
             raise RuntimeError(f"Agent run failed: {e}") from e
 
-    # ── Core AI methods ────────────────────────────────────────────────────
+    def _get_rag_context(self, question: str, k: int = 8) -> str:
+        if not self.rag_helper:
+            return ""
+        docs = self.rag_helper.query(question, k=k)
+        return "\n\n---\n\n".join(docs) if docs else ""
 
-    def analyze_student(self) -> str:
-        """Run the student analyser agent and return the analysis text."""
-        agent = self.agents.student_analyzer_agent()
-        prompt = self._fmt(
-            self.config["prompts"]["student_analysis"]["base"],
-            topic=self.topic,
-            subject_category=self.subject_category,
-            knowledge_level=self.knowledge_level,
-            learning_goal=self.learning_goal,
-            time_available=self.time_available,
-            learning_style=self.learning_style,
-        )
+    def _full_context(self, k: int = 12) -> str:
+        if not self.rag_helper:
+            return ""
+        queries = [
+            "introduction overview main concepts",
+            "key ideas important points conclusion",
+            self.topic,
+        ]
+        seen: set = set()
+        chunks = []
+        for q in queries:
+            for doc in self.rag_helper.query(q, k=k):
+                if doc not in seen:
+                    seen.add(doc)
+                    chunks.append(doc)
+        return "\n\n---\n\n".join(chunks[:30])
+
+    def _parse_json_response(self, text: str):
+        clean = re.sub(r"```(?:json)?", "", text).replace("```", "").strip()
+        try:
+            parsed = json.loads(clean)
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+        match = re.search(r"\[.*\]", clean, re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(0))
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+        return None
+
+    # ── Chat / Tutoring ────────────────────────────────────────────────────
+
+    def get_tutoring(self, student_question: str, context: str = "") -> str:
+        rag_ctx = self._get_rag_context(student_question)
+        if rag_ctx:
+            agent = self.agents.rag_tutor_agent()
+            prompt = self._prompt("rag_query", question=student_question, context=rag_ctx)
+        else:
+            agent = self.agents.tutor_agent()
+            prompt = self._prompt(
+                "tutoring",
+                student_question=student_question,
+                context=context or "No additional context provided.",
+                knowledge_level=self.knowledge_level,
+            )
         return self._run_agent(agent, prompt)
 
-    def create_roadmap(self, student_analysis: str) -> str:
-        """Create a phased learning roadmap based on the student analysis."""
-        agent = self.agents.roadmap_creator_agent()
-        prompt = self._fmt(
-            self.config["prompts"]["roadmap_creation"]["base"],
-            student_analysis=student_analysis,
-            topic=self.topic,
-            learning_goal=self.learning_goal,
-            time_available=self.time_available,
-            knowledge_level=self.knowledge_level,
-        )
+    # ── Summary ────────────────────────────────────────────────────────────
+
+    def summarize_content(self) -> str:
+        content = self._full_context()
+        agent = self.agents.summarizer_agent()
+        if content:
+            prompt = self._prompt(
+                "content_summary",
+                topic=self.topic,
+                knowledge_level=self.knowledge_level,
+                content=content,
+            )
+        else:
+            prompt = (
+                f"Provide a comprehensive summary of: {self.topic}\n"
+                f"Audience: {self.knowledge_level} level.\n"
+                f"Goal: {self.learning_goal or 'general understanding'}.\n"
+                "Cover: overview, main concepts, key terms, and takeaways."
+            )
         return self._run_agent(agent, prompt)
 
-    def find_resources(self) -> str:
-        """Find and curate learning resources using web search."""
-        agent = self.agents.resource_finder_agent()
-        prompt = self._fmt(
-            self.config["prompts"]["resource_finding"]["base"],
-            topic=self.topic,
-            learning_goal=self.learning_goal,
-            knowledge_level=self.knowledge_level,
-            learning_style=self.learning_style,
-        )
+    # ── Notes ──────────────────────────────────────────────────────────────
+
+    def generate_notes(self) -> str:
+        content = self._full_context()
+        agent = self.agents.notes_agent()
+        if content:
+            prompt = self._prompt(
+                "notes_generation",
+                topic=self.topic,
+                knowledge_level=self.knowledge_level,
+                content=content,
+            )
+        else:
+            prompt = (
+                f"Generate comprehensive structured study notes for: {self.topic}\n"
+                f"Level: {self.knowledge_level}\n"
+                f"Goal: {self.learning_goal or 'general understanding'}\n"
+                "Use clear headings, bullet points, key terms, and a summary section."
+            )
         return self._run_agent(agent, prompt)
+
+    # ── Quiz ───────────────────────────────────────────────────────────────
 
     def generate_quiz(
         self,
         difficulty_level: str = "intermediate",
         focus_areas: str = "general",
-        num_questions: int = 10,
+        num_questions: int = 5,
     ) -> str:
-        """Generate an adaptive quiz at the requested difficulty."""
         agent = self.agents.quiz_generator_agent()
-        prompt = self._fmt(
-            self.config["prompts"]["quiz_generation"]["base"],
-            topic=self.topic,
-            difficulty_level=difficulty_level,
-            focus_areas=focus_areas,
-            num_questions=num_questions,
-        )
-        return self._run_agent(agent, prompt)
+        rag_ctx = self._full_context(k=10)
+        if rag_ctx:
+            prompt = (
+                f"Generate exactly {num_questions} multiple-choice questions "
+                f"based ONLY on the following content.\n"
+                f"DIFFICULTY: {difficulty_level}\n\n"
+                f"CONTENT:\n{rag_ctx}\n\n"
+                "Return ONLY a JSON array:\n"
+                '[{"question":"...","options":["A","B","C","D"],"answer":"A","explanation":"..."}]'
+            )
+        else:
+            prompt = self._prompt(
+                "quiz_generation",
+                topic=self.topic,
+                difficulty_level=difficulty_level,
+                focus_areas=focus_areas,
+                num_questions=str(num_questions),
+            )
+        result = self._run_agent(agent, prompt)
+        parsed = self._parse_json_response(result)
+        if parsed is not None:
+            return json.dumps(parsed)
+        return result
 
-    def get_tutoring(self, student_question: str, context: str = "") -> str:
-        """Answer a student question with the tutor agent."""
-        agent = self.agents.tutor_agent()
-        prompt = self._fmt(
-            self.config["prompts"]["tutoring"]["base"],
-            student_question=student_question,
-            context=context,
+    # ── Roadmap ────────────────────────────────────────────────────────────
+
+    def create_roadmap(self, student_analysis: str = "") -> str:
+        agent = self.agents.roadmap_creator_agent()
+        prompt = self._prompt(
+            "roadmap_creation",
+            student_analysis=student_analysis or f"Student level: {self.knowledge_level}",
+            topic=self.topic,
+            learning_goal=self.learning_goal or "general understanding",
+            time_available=self.time_available or "flexible",
             knowledge_level=self.knowledge_level,
         )
         return self._run_agent(agent, prompt)
 
-    # ── RAG methods ────────────────────────────────────────────────────────
+    def generate_roadmap_structured(self) -> list:
+        agent = self.agents.roadmap_creator_agent()
+        prompt = self._prompt(
+            "roadmap_structured",
+            topic=self.topic,
+            knowledge_level=self.knowledge_level,
+            learning_goal=self.learning_goal or "general understanding",
+            time_available=self.time_available or "flexible",
+        )
+        result = self._run_agent(agent, prompt)
+        parsed = self._parse_json_response(result)
+        if parsed:
+            steps = []
+            for item in parsed:
+                if isinstance(item, dict):
+                    steps.append({
+                        "title":       item.get("title") or item.get("step") or item.get("name") or "Step",
+                        "description": item.get("description") or item.get("details") or "",
+                        "duration":    item.get("duration") or item.get("time") or "",
+                    })
+                elif isinstance(item, str):
+                    steps.append({"title": item, "description": "", "duration": ""})
+            return steps
+        # Plain-text fallback
+        lines = [l.strip() for l in result.split("\n") if l.strip()]
+        steps = []
+        for line in lines:
+            if re.match(r"^(phase|step|stage|\d+[\.\)])", line, re.IGNORECASE):
+                steps.append({"title": line, "description": "", "duration": ""})
+        return steps if steps else [{"title": result[:200], "description": "", "duration": ""}]
 
-    def initialize_rag(self, collection_name: str = "study_materials"):
-        """Lazily initialise the RAG helper / vector store."""
+    # ── Analysis / Resources ───────────────────────────────────────────────
+
+    def analyze_student(self) -> str:
+        agent = self.agents.student_analyzer_agent()
+        prompt = self._prompt(
+            "student_analysis",
+            topic=self.topic,
+            subject_category=self.subject_category or "general",
+            knowledge_level=self.knowledge_level,
+            learning_goal=self.learning_goal or "general understanding",
+            time_available=self.time_available or "flexible",
+            learning_style=self.learning_style or "reading",
+        )
+        return self._run_agent(agent, prompt)
+
+    def find_resources(self) -> str:
+        agent = self.agents.resource_finder_agent()
+        prompt = self._prompt(
+            "resource_finding",
+            topic=self.topic,
+            learning_goal=self.learning_goal or "general understanding",
+            knowledge_level=self.knowledge_level,
+            learning_style=self.learning_style or "reading",
+        )
+        return self._run_agent(agent, prompt)
+
+    # ── RAG ────────────────────────────────────────────────────────────────
+
+    def initialize_rag(self, collection_name: str = "study_materials") -> None:
         from rag_helper import RAGHelper
         self.rag_helper = RAGHelper(collection_name=collection_name)
 
     def add_document_to_rag(self, file_path: str, file_type: str = "pdf") -> bool:
-        """Embed a document file into the vector store."""
         if not self.rag_helper:
             self.initialize_rag()
+        if self.rag_helper is None:
+            return False
         if file_type == "pdf":
             return self.rag_helper.load_pdf(file_path)
-        elif file_type == "text":
-            return self.rag_helper.load_text(file_path)
-        return False
+        return self.rag_helper.load_text(file_path)
 
-    def query_documents(self, question: str, k: int = 4) -> str:
-        """Query the RAG knowledge base and return a grounded answer."""
+    def query_documents(self, question: str, k: int = 8) -> str:
         if not self.rag_helper:
-            return (
-                "No documents have been uploaded yet. "
-                "Please upload study materials first."
-            )
-
+            return "No documents uploaded yet."
         docs = self.rag_helper.query(question, k=k)
+        stripped = re.sub(
+            r"\b(summarize|summary|explain|chapter|what is|tell me about)\b",
+            "", question, flags=re.IGNORECASE
+        ).strip()
+        if stripped and stripped != question:
+            extra = self.rag_helper.query(stripped, k=4)
+            seen: set = set()
+            merged = []
+            for d in docs + extra:
+                if d not in seen:
+                    seen.add(d)
+                    merged.append(d)
+            docs = merged
         if not docs:
-            return (
-                "I couldn't find relevant information in your uploaded documents. "
-                "Try rephrasing your question or uploading more materials."
-            )
-
+            return "I couldn't find relevant information in your documents. Try a more specific question."
         context = "\n\n---\n\n".join(docs)
         agent = self.agents.rag_tutor_agent()
-        prompt = self._fmt(
-            self.config["prompts"]["rag_query"]["base"],
-            question=question,
-            context=context,
-        )
+        prompt = self._prompt("rag_query", question=question, context=context)
         return self._run_agent(agent, prompt)
 
     def get_document_count(self) -> int:
-        """Return the number of chunks currently in the vector store."""
         if not self.rag_helper:
             return 0
         return self.rag_helper.get_document_count()
 
     def clear_documents(self) -> bool:
-        """Wipe the entire RAG knowledge base."""
         if not self.rag_helper:
             return False
         return self.rag_helper.clear_database()
