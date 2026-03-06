@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{{ session.topic or 'PDF Space' }} — StudyAI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pdf_session.css') }}"/>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/CustomEase.min.js"></script>
+</head>
+<body>
+
+<div id="loader">
+  <div class="ld" style="animation:ldp 1s 0s ease-in-out infinite alternate"></div>
+  <div class="ld" style="animation:ldp 1s .2s ease-in-out infinite alternate"></div>
+  <div class="ld" style="animation:ldp 1s .4s ease-in-out infinite alternate"></div>
+</div>
+<style>@keyframes ldp{from{transform:scaleY(.4);opacity:.3}to{transform:scaleY(1.4);opacity:1}}</style>
+
+<div class="layout" id="layout">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <a href="/dashboard" class="tb-btn"><i data-lucide="arrow-left"></i></a>
+    <a href="/" class="tb-logo">StudyAI</a>
+    <div class="tb-sep"></div>
+    <span class="tb-name">{{ session.topic or 'PDF Document' }}</span>
+    <span class="tb-badge"><i data-lucide="file-text"></i> PDF</span>
+    <div class="tb-gap"></div>
+    <button class="exam-topbar-btn" onclick="openExamModal()">
+      <i data-lucide="graduation-cap"></i> New Exam
+    </button>
+    <button class="listen-pill" id="listen-btn" onclick="toggleListen()">
+      <i data-lucide="play-circle" id="listen-icon"></i>
+      <span id="listen-label">Listen</span>
+    </button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn" onclick="toast('Share coming soon')"><i data-lucide="share-2"></i></button>
+  </header>
+
+  <!-- LEFT — PDF / TEXT READER -->
+  <main class="panel-left">
+    <div class="reader-header">
+      <span class="reader-title">{{ session.topic or 'PDF Document' }}</span>
+      <div class="view-toggle" id="view-toggle">
+        <button class="vtbtn active" id="vt-pdf" onclick="switchView('pdf')">
+          <i data-lucide="file-text"></i> PDF
+        </button>
+        <button class="vtbtn" id="vt-text" onclick="switchView('text')">
+          <i data-lucide="align-left"></i> Text
+        </button>
+      </div>
+      <span class="reader-meta" id="reader-meta"></span>
+    </div>
+
+    <!-- PDF Viewer -->
+    <div class="pdf-viewer-wrap" id="pdf-viewer-wrap">
+      {% if pdf_url %}
+        <iframe id="pdf-frame" src="{{ pdf_url }}#toolbar=1&navpanes=1&scrollbar=1"
+                title="PDF Viewer" allowfullscreen></iframe>
+      {% else %}
+        <div class="pdf-unavailable">
+          <i data-lucide="file-x"></i>
+          <p>PDF file not available.</p>
+          <button class="vtbtn" onclick="switchView('text')">View extracted text instead</button>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Text View (hidden by default) -->
+    <div class="reader-body" id="reader-body" style="display:none">{{ session.raw_text or '' }}</div>
+  </main>
+
+  <!-- RIGHT PANEL — identical to text_session -->
+  <aside class="panel-right">
+
+    <!-- Tab bar -->
+    <nav class="rp-nav" id="rp-nav">
+      <div id="rp-slider"></div>
+      <button class="rp-tab active" id="tab-learn" data-tab="learn" onclick="switchTab('learn')">
+        <i data-lucide="layout-grid"></i> Learn
+      </button>
+      <div id="dyn-tabs" style="display:contents"></div>
+      <div style="flex:1;min-width:4px"></div>
+      <button class="ann-nav-btn" id="ann-nav-btn" onclick="toggleAnnotations()">
+        <i data-lucide="pen-line"></i>
+        <span id="ann-badge" style="display:none"></span>
+      </button>
+    </nav>
+
+    <!-- Panels -->
+    <div class="rp-panels" id="rp-panels">
+
+      <!-- LEARN -->
+      <div class="rp-panel active" id="panel-learn">
+        <div class="home-tools">
+          <div class="tool-section-label">Generate</div>
+          <div class="tool-grid">
+            <button class="tool-btn t-summary" onclick="openToolTab('summary','Summary','file-text','var(--c-summary)')">
+              <div class="tool-icon"><i data-lucide="file-text"></i></div>
+              <div class="tool-info"><div class="tool-name">Summary</div><div class="tool-desc">Key points</div></div>
+              <div class="tool-arrow"><i data-lucide="chevron-right"></i></div>
+            </button>
+            <button class="tool-btn t-quiz" onclick="openToolTab('quiz','Quiz','check-square','var(--c-quiz)')">
+              <div class="tool-icon"><i data-lucide="check-square"></i></div>
+              <div class="tool-info"><div class="tool-name">Quiz</div><div class="tool-desc">Test yourself</div></div>
+              <div class="tool-arrow"><i data-lucide="chevron-right"></i></div>
+            </button>
+            <button class="tool-btn t-notes" onclick="openToolTab('notes','Notes','notebook-pen','var(--c-notes)')">
+              <div class="tool-icon"><i data-lucide="notebook-pen"></i></div>
+              <div class="tool-info"><div class="tool-name">Notes</div><div class="tool-desc">Your thoughts</div></div>
+              <div class="tool-arrow"><i data-lucide="chevron-right"></i></div>
+            </button>
+            <button class="tool-btn t-chapters" onclick="openToolTab('chapters','Chapters','book-open','var(--c-chapters)')">
+              <div class="tool-icon"><i data-lucide="book-open"></i></div>
+              <div class="tool-info"><div class="tool-name">Chapters</div><div class="tool-desc">AI sections</div></div>
+              <div class="tool-arrow"><i data-lucide="chevron-right"></i></div>
+            </button>
+            <button class="tool-btn t-figures" id="figures-tool-btn" onclick="openToolTab('figures','Figures','image','var(--c-figures)')" style="display:none">
+              <div class="tool-icon"><i data-lucide="image"></i></div>
+              <div class="tool-info"><div class="tool-name">Figures</div><div class="tool-desc">Extracted images</div></div>
+              <div class="tool-arrow"><i data-lucide="chevron-right"></i></div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUMMARY -->
+      <div class="rp-panel" id="panel-summary" style="display:none">
+        <div class="tp-body">
+          <button class="gen-btn" id="summary-gen-btn" onclick="genSummary()">
+            <span class="gen-sp"></span>
+            <span class="gen-lbl"><i data-lucide="sparkles" style="width:14px;height:14px"></i> Generate Summary</span>
+          </button>
+          <div id="summary-output"></div>
+        </div>
+      </div>
+
+      <!-- QUIZ -->
+      <div class="rp-panel" id="panel-quiz" style="display:none">
+        <div class="tp-body">
+          <div class="pill-row">
+            <button class="qpill active" data-diff="easy" onclick="setDiff(this)">Easy</button>
+            <button class="qpill" data-diff="intermediate" onclick="setDiff(this)">Medium</button>
+            <button class="qpill" data-diff="hard" onclick="setDiff(this)">Hard</button>
+          </div>
+          <div class="pill-row">
+            <button class="qpill active" data-nq="5" onclick="setNq(this)">5 Qs</button>
+            <button class="qpill" data-nq="10" onclick="setNq(this)">10 Qs</button>
+            <button class="qpill" data-nq="15" onclick="setNq(this)">15 Qs</button>
+          </div>
+          <button class="gen-btn" id="quiz-gen-btn" onclick="genQuiz()">
+            <span class="gen-sp"></span>
+            <span class="gen-lbl"><i data-lucide="sparkles" style="width:14px;height:14px"></i> Generate Quiz</span>
+          </button>
+          <div id="quiz-output"></div>
+        </div>
+      </div>
+
+      <!-- NOTES -->
+      <div class="rp-panel" id="panel-notes" style="display:none">
+        <div class="tp-body">
+          <div class="notes-editor">
+            <div class="notes-tb">
+              <button class="ntb" onclick="applyNote('bold')"><b>B</b></button>
+              <button class="ntb" onclick="applyNote('italic')"><i>I</i></button>
+              <button class="ntb" onclick="applyNote('h2')">H2</button>
+              <button class="ntb" onclick="applyNote('bullet')">•</button>
+            </div>
+            <textarea class="notes-ta" id="notes-ta" placeholder="Type notes here, or switch to Text view → highlight → Add to notes…">{{ session.notes or '' }}</textarea>
+          </div>
+          <button class="save-btn" onclick="saveNotes()">
+            <i data-lucide="save"></i> Save Notes
+          </button>
+        </div>
+      </div>
+
+      <!-- CHAPTERS -->
+      <div class="rp-panel" id="panel-chapters" style="display:none">
+        <div class="tp-body">
+          <button class="gen-btn" id="chapters-gen-btn" onclick="genChapters()">
+            <span class="gen-sp"></span>
+            <span class="gen-lbl"><i data-lucide="sparkles" style="width:14px;height:14px"></i> Split into Chapters</span>
+          </button>
+          <div id="chapters-output"></div>
+        </div>
+      </div>
+
+      <!-- FIGURES -->
+      <div class="rp-panel" id="panel-figures" style="display:none">
+        <div class="tp-body">
+          <div id="figures-loading" style="text-align:center;padding:32px 0;color:var(--g4);font-size:13px">
+            <i data-lucide="loader-2" style="width:18px;height:18px;animation:spin .7s linear infinite"></i>
+            <div style="margin-top:8px">Loading figures…</div>
+          </div>
+          <div id="figures-empty" style="display:none;text-align:center;padding:32px 0;color:var(--g4);font-size:13px">
+            <i data-lucide="image-off" style="width:28px;height:28px;color:var(--g5)"></i>
+            <div style="margin-top:8px">No figures found in this PDF.</div>
+          </div>
+          <div id="figures-grid"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ANNOTATIONS DRAWER -->
+    <div class="ann-drawer" id="ann-drawer">
+      <div class="ann-drawer-header">
+        <span class="ann-drawer-title"><i data-lucide="pen-line" style="width:14px;height:14px"></i> Annotations</span>
+        <button class="tb-btn" onclick="toggleAnnotations()"><i data-lucide="x"></i></button>
+      </div>
+      <div class="ann-drawer-body">
+        <div id="ann-empty" class="ann-empty">
+          <i data-lucide="highlighter"></i>
+          <div>No annotations yet</div>
+          <div style="font-size:11.5px;color:var(--g4);margin-top:2px">Switch to Text view → select text → Highlight</div>
+        </div>
+        <div id="ann-list"></div>
+      </div>
+    </div>
+
+  </aside>
+</div>
+
+<!-- SELECTION TOOLBAR (only active in text view) -->
+<div class="sel-toolbar" id="sel-toolbar">
+  <button class="sel-btn" onmousedown="event.preventDefault()" onclick="selExplain()"><i data-lucide="lightbulb"></i> Explain</button>
+  <button class="sel-btn" onmousedown="event.preventDefault()" onclick="selChat()"><i data-lucide="message-circle"></i> Chat</button>
+  <button class="sel-btn" onmousedown="event.preventDefault()" onclick="selAddToNotes()"><i data-lucide="notebook-pen"></i> Add to notes</button>
+  <div class="sel-sep"></div>
+  <div class="color-dots">
+    <div class="cdot" style="background:#ffd600" onmousedown="event.preventDefault()" onclick="selHighlight('yellow')" title="Yellow"></div>
+    <div class="cdot" style="background:#1a6eff" onmousedown="event.preventDefault()" onclick="selHighlight('blue')"   title="Blue"></div>
+    <div class="cdot" style="background:#10b981" onmousedown="event.preventDefault()" onclick="selHighlight('green')"  title="Green"></div>
+    <div class="cdot" style="background:#e53935" onmousedown="event.preventDefault()" onclick="selHighlight('pink')"   title="Red"></div>
+  </div>
+</div>
+
+<!-- EXPLAIN OVERLAY -->
+<div id="explain-overlay" class="explain-overlay">
+  <div class="explain-header">
+    <span style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--g2)">
+      <i data-lucide="lightbulb" style="width:14px;height:14px;color:#f59e0b"></i> Explanation
+    </span>
+    <button class="tb-btn" onclick="closeExplain()"><i data-lucide="x"></i></button>
+  </div>
+  <div id="explain-text" class="explain-body"></div>
+</div>
+
+<!-- EXAM MODAL -->
+<div class="modal-bg" id="exam-modal">
+  <div class="modal">
+    <h3>New Exam</h3>
+    <p class="sub">Timed test generated from this PDF's content.</p>
+    <div class="mf">
+      <div class="mf-row">
+        <div><label>Questions</label>
+          <select class="msel" id="exam-nq">
+            <option value="10">10</option><option value="15">15</option>
+            <option value="20" selected>20</option><option value="30">30</option>
+          </select>
+        </div>
+        <div><label>Time limit</label>
+          <select class="msel" id="exam-time">
+            <option value="15">15 min</option><option value="30" selected>30 min</option>
+            <option value="45">45 min</option><option value="60">60 min</option>
+          </select>
+        </div>
+      </div>
+      <div><label>Difficulty</label>
+        <select class="msel" id="exam-diff">
+          <option value="easy">Easy</option><option value="intermediate">Intermediate</option>
+          <option value="mixed" selected>Mixed</option><option value="hard">Hard</option>
+        </select>
+      </div>
+    </div>
+    <div class="mactions">
+      <button class="mbtn mbtn-cancel" onclick="closeExamModal()">Cancel</button>
+      <button class="mbtn mbtn-go" id="exam-start-btn" onclick="startExam()">Start Exam</button>
+    </div>
+  </div>
+</div>
+
+<!-- EXAM SCREEN -->
+<div id="exam-screen">
+  <div class="exam-topbar">
+    <span class="exam-title">Exam</span>
+    <div class="exam-timer" id="exam-timer">
+      <i data-lucide="clock"></i><span id="exam-timer-display">—</span>
+    </div>
+    <button class="tb-btn" onclick="finishExam()"><i data-lucide="x"></i></button>
+  </div>
+  <div class="exam-progress-bar"><div class="exam-progress-fill" id="exam-progress-fill" style="width:0%"></div></div>
+  <div class="exam-body">
+    <div class="exam-q-num" id="exam-q-num"></div>
+    <div class="exam-question" id="exam-question"></div>
+    <div class="exam-opts" id="exam-opts"></div>
+  </div>
+  <div class="exam-nav">
+    <button class="exam-nav-btn secondary" onclick="examPrev()"><i data-lucide="arrow-left" style="width:14px;height:14px"></i> Prev</button>
+    <button class="exam-nav-btn" id="exam-next-btn" onclick="examNext()">Next <i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+    <button class="exam-nav-btn" id="exam-finish-btn" style="display:none" onclick="finishExam()">Finish</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="{{ url_for('static', filename='js/pdf_session.js') }}"></script>
+<script>
+  const SESSION_ID    = "{{ session.sid }}";
+  const SESSION_TOPIC = {{ session.topic | tojson }};
+  const SESSION_PDF_URL = {{ pdf_url | tojson }};
+  const HAS_RAW_TEXT  = {{ 'true' if session.raw_text else 'false' }};
+</script>
+</body>
+</html>

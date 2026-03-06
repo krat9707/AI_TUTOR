@@ -95,28 +95,96 @@ body {
 
 .tb-right { display: flex; align-items: center; gap: 10px; }
 
-.upgrade-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 16px; border-radius: 100px;
-  border: 1.5px solid var(--green);
-  background: none; color: var(--green);
+/* ── MODEL TOGGLE ── */
+.model-toggle { position: relative; }
+
+.mt-trigger {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px 7px 10px; border-radius: 100px;
+  border: 1.5px solid var(--g5);
+  background: var(--white); color: var(--black);
   font-family: 'DM Sans', sans-serif;
-  font-size: 13px; font-weight: 600;
-  cursor: pointer; text-decoration: none;
-  transition: background 0.2s, color 0.2s, box-shadow 0.2s, transform 0.2s;
-  position: relative; overflow: hidden;
+  font-size: 12.5px; font-weight: 500;
+  cursor: pointer;
+  transition: border-color .18s, box-shadow .18s, background .18s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
 }
-.upgrade-btn::before {
-  content: '';
-  position: absolute; inset: 0;
-  background: var(--green);
-  transform: scaleX(0); transform-origin: left;
-  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
-  z-index: 0;
+.mt-trigger:hover, .mt-trigger.open {
+  border-color: rgba(0,0,0,0.18);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  background: var(--white);
 }
-.upgrade-btn:hover::before { transform: scaleX(1); }
-.upgrade-btn span { position: relative; z-index: 1; }
-.upgrade-btn:hover { color: var(--white); box-shadow: 0 4px 20px rgba(29,185,84,0.3); }
+.mt-trigger svg { color: var(--g3); transition: transform .2s; flex-shrink: 0; }
+.mt-trigger.open svg { transform: rotate(180deg); }
+
+.mt-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.06);
+}
+.mt-label { white-space: nowrap; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+
+.mt-menu {
+  display: none;
+  position: absolute; top: calc(100% + 8px); right: 0;
+  width: 260px; max-height: 320px;
+  overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--g5) transparent;
+  background: var(--white); border: 1px solid var(--g5);
+  border-radius: 14px; padding: 6px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08), 0 16px 48px rgba(0,0,0,0.07), 0 2px 6px rgba(0,0,0,0.04);
+  z-index: 200; opacity: 0;
+}
+.mt-menu::-webkit-scrollbar{width:4px}
+.mt-menu::-webkit-scrollbar-thumb{background:var(--g5);border-radius:2px}
+.mt-menu.open { display: block; }
+
+.mt-menu-header {
+  font-size: 10.5px; font-weight: 700; color: var(--g3);
+  text-transform: uppercase; letter-spacing: .9px;
+  padding: 6px 10px 4px;
+}
+
+.mt-item {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 9px 10px; border-radius: 9px;
+  border: none; background: none; cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: background .14s;
+  text-align: left;
+}
+.mt-item:hover:not(:disabled) { background: var(--g6); }
+.mt-item.active { background: var(--g6); }
+.mt-item:disabled { opacity: .45; cursor: not-allowed; }
+
+.mt-item-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+}
+.mt-item-info { flex: 1; min-width: 0; }
+.mt-item-name {
+  display: block; font-size: 13px; font-weight: 500; color: var(--black);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mt-item-desc {
+  display: block; font-size: 11px; color: var(--g3); margin-top: 1px;
+}
+.mt-item-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 7px;
+  border-radius: 100px; flex-shrink: 0; white-space: nowrap;
+}
+.mt-item-na {
+  font-size: 10px; color: #e53935; font-weight: 500;
+  background: #fff5f5; padding: 2px 7px; border-radius: 100px;
+  flex-shrink: 0;
+}
+
+.mt-menu-footer {
+  font-size: 11px; color: var(--g3); padding: 6px 10px 4px;
+  border-top: 1px solid var(--g5); margin-top: 4px;
+}
+.mt-menu-footer code {
+  font-size: 10.5px; background: var(--g6);
+  padding: 1px 5px; border-radius: 4px; color: var(--g2);
+}
+
 
 /* ─── PAGE ─── */
 .page {

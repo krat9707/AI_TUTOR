@@ -1,134 +1,642 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>History — StudyAI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-:root{
-  --ink:#05060a;--ink2:#0b0c15;--ink3:#11131e;--ink4:#161822;
-  --glass:rgba(255,255,255,0.03);--glass2:rgba(255,255,255,0.06);
-  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
-  --gold:#c9a84c;--gold2:#e8c76a;--gold-glow:rgba(201,168,76,0.1);
-  --steel:#4c9ac9;--violet:#9a7fc9;--rose:#c94c7a;--green:#4cc98c;
-  --txt:#e8e4d9;--txt2:#9b9589;--txt3:#504d46;
-  --r:14px;--r2:9px;--r3:5px;
-  --serif:'Playfair Display',serif;--sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
-  --sidebar:240px;
-}
-*{margin:0;padding:0;box-sizing:border-box;}
-html,body{height:100%;overflow:hidden;}
-body{background:var(--ink);color:var(--txt);font-family:var(--sans);display:flex;}
-.sidebar{width:var(--sidebar);flex-shrink:0;background:var(--ink2);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh;overflow-y:auto;}
-.sidebar-brand{padding:1.4rem 1.2rem 0.9rem;border-bottom:1px solid var(--border);}
-.brand-logo{font-family:var(--serif);font-size:1.2rem;font-weight:700;color:var(--txt);text-decoration:none;display:block;}
-.brand-logo span{color:var(--gold);}
-.sidebar-section{padding:0.8rem 0.6rem 0.4rem;}
-.sidebar-section-label{font-family:var(--mono);font-size:0.58rem;font-weight:600;color:var(--txt3);letter-spacing:0.15em;text-transform:uppercase;padding:0 0.6rem;margin-bottom:0.4rem;}
-.sidebar-nav{display:flex;flex-direction:column;gap:2px;}
-.nav-item{display:flex;align-items:center;gap:10px;padding:0.55rem 0.7rem;border-radius:var(--r3);font-size:0.82rem;font-weight:500;color:var(--txt2);text-decoration:none;cursor:pointer;transition:all 0.15s;}
-.nav-item:hover{background:var(--glass2);color:var(--txt);}
-.nav-item.active{background:var(--gold-glow);color:var(--gold);}
-.ni{font-size:0.9rem;width:18px;text-align:center;}
-.sidebar-bottom{margin-top:auto;padding:0.8rem 0.6rem;border-top:1px solid var(--border);}
-.user-card{display:flex;align-items:center;gap:8px;padding:0.6rem;border-radius:var(--r2);background:var(--glass);border:1px solid var(--border);}
-.user-avatar{width:30px;height:30px;border-radius:50%;background:var(--gold-glow);border:1px solid rgba(201,168,76,0.2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.62rem;color:var(--gold);flex-shrink:0;}
-.user-name{font-size:0.78rem;font-weight:600;color:var(--txt);}
-.logout-btn{margin-left:auto;background:none;border:none;cursor:pointer;color:var(--txt3);font-size:0.8rem;border-radius:3px;transition:color 0.15s;}
-.logout-btn:hover{color:var(--rose);}
-.main{flex:1;height:100vh;overflow-y:auto;}
-.topbar{background:rgba(5,6,10,0.9);border-bottom:1px solid var(--border);padding:0.9rem 2rem;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(12px);position:sticky;top:0;z-index:5;}
-.topbar-title{font-family:var(--serif);font-size:1.05rem;font-weight:700;color:var(--txt);}
-.content-area{padding:2rem;}
-.page-hdr{margin-bottom:2rem;}
-.page-tag{font-family:var(--mono);font-size:0.62rem;color:var(--gold);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:0.4rem;display:flex;align-items:center;gap:8px;}
-.page-tag::before{content:'';width:20px;height:1px;background:var(--gold);}
-.page-title{font-family:var(--serif);font-size:2.2rem;font-weight:700;letter-spacing:-0.03em;color:var(--txt);}
-.history-table{width:100%;border-collapse:separate;border-spacing:0 8px;}
-.history-table th{font-family:var(--mono);font-size:0.6rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--txt3);padding:0 1rem 0.5rem;text-align:left;}
-.history-row{background:var(--ink3);border:1px solid var(--border);cursor:pointer;transition:all 0.2s;}
-.history-row:hover{border-color:rgba(201,168,76,0.3);background:var(--gold-glow);}
-.history-row td{padding:1rem;vertical-align:middle;}
-.history-row td:first-child{border-radius:var(--r2) 0 0 var(--r2);}
-.history-row td:last-child{border-radius:0 var(--r2) var(--r2) 0;}
-.ht-topic{font-family:var(--serif);font-size:0.95rem;font-weight:700;color:var(--txt);margin-bottom:2px;}
-.ht-goal{font-size:0.76rem;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;}
-.ht-cat{font-family:var(--mono);font-size:0.62rem;background:var(--gold-glow);color:var(--gold);border:1px solid rgba(201,168,76,0.2);border-radius:4px;padding:3px 9px;display:inline-block;}
-.ht-level{font-size:0.78rem;color:var(--txt2);}
-.ht-date{font-family:var(--mono);font-size:0.65rem;color:var(--txt3);}
-.ht-open{font-family:var(--mono);font-size:0.62rem;color:var(--gold);text-decoration:none;border:1px solid rgba(201,168,76,0.2);border-radius:4px;padding:4px 10px;transition:all 0.15s;}
-.ht-open:hover{background:var(--gold-glow);}
-.empty-state{text-align:center;padding:5rem;background:var(--glass);border:1px dashed var(--border2);border-radius:var(--r);margin-top:2rem;}
-.es-icon{font-size:3.5rem;margin-bottom:1rem;}
-.es-title{font-family:var(--serif);font-size:1.1rem;font-weight:700;color:var(--txt2);margin-bottom:0.4rem;}
-.es-sub{font-size:0.82rem;color:var(--txt3);margin-bottom:1.4rem;}
-.btn-primary{background:var(--gold);color:var(--ink);border:none;border-radius:var(--r2);padding:0.7rem 1.8rem;font-family:var(--sans);font-size:0.85rem;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block;}
-.btn-primary:hover{background:var(--gold2);}
-@media(max-width:800px){body{display:block;}.sidebar{display:none;}.main{height:auto;overflow-y:visible;}}
-</style>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>History — StudyAI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/CustomEase.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black:  #0a0a0a;
+      --g1:     #141414;
+      --g2:     #3a3a3a;
+      --g3:     #7a7a7a;
+      --g4:     #b0b0b0;
+      --g5:     #e2e2e2;
+      --g6:     #efefef;
+      --g7:     #f7f7f7;
+      --white:  #ffffff;
+      --r:      11px;
+      --r-lg:   16px;
+      --sh-card:  0 1px 2px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.05);
+      --sh-hover: 0 2px 6px rgba(0,0,0,0.05), 0 10px 36px rgba(0,0,0,0.09);
+    }
+
+    html, body { min-height: 100%; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--white);
+      color: var(--black);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── TOPBAR ── */
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; gap: 8px;
+      padding: 0 20px; height: 52px;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--g5);
+      box-shadow: 0 1px 0 var(--g5), 0 4px 20px rgba(0,0,0,0.03);
+    }
+    .tb-logo {
+      font-size: 16px; font-weight: 700; letter-spacing: -.5px;
+      color: var(--black); text-decoration: none;
+    }
+    .tb-sep { width: 1px; height: 16px; background: var(--g5); }
+    .tb-title { font-size: 13px; font-weight: 500; color: var(--g3); }
+    .tb-gap  { flex: 1; }
+    .tb-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 9px;
+      background: none; border: none; cursor: pointer; color: var(--g3);
+      transition: background .15s, color .15s; text-decoration: none;
+    }
+    .tb-btn svg { width: 15px; height: 15px; stroke-width: 1.8; }
+    .tb-btn:hover { background: var(--g6); color: var(--black); }
+
+    /* ── PAGE ── */
+    .page {
+      max-width: 780px; margin: 0 auto;
+      padding: 48px 24px 100px;
+      opacity: 0;
+    }
+
+    /* ── HEADER ── */
+    .page-header {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      margin-bottom: 32px; gap: 16px; flex-wrap: wrap;
+    }
+    .page-header-left {}
+    .page-kicker {
+      font-size: 11px; font-weight: 700; color: var(--g4);
+      text-transform: uppercase; letter-spacing: 1px;
+      margin-bottom: 6px; display: flex; align-items: center; gap: 5px;
+    }
+    .page-kicker svg { width: 11px; height: 11px; }
+    .page-h1 {
+      font-size: 28px; font-weight: 700; letter-spacing: -.6px; line-height: 1.15;
+    }
+    .page-sub {
+      font-size: 13.5px; color: var(--g3); margin-top: 5px; font-weight: 300;
+    }
+
+    /* ── STATS ROW ── */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 10px; margin-bottom: 32px;
+    }
+    .stat-card {
+      background: var(--g7); border: 1px solid var(--g5);
+      border-radius: var(--r-lg); padding: 16px 18px;
+      box-shadow: var(--sh-card);
+    }
+    .stat-num {
+      font-size: 26px; font-weight: 700; letter-spacing: -.8px;
+      font-variant-numeric: tabular-nums; line-height: 1;
+    }
+    .stat-lbl {
+      font-size: 11.5px; color: var(--g3); margin-top: 4px; font-weight: 400;
+    }
+
+    /* ── FILTER BAR ── */
+    .filter-bar {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .filter-pill {
+      display: flex; align-items: center; gap: 5px;
+      padding: 6px 13px; border-radius: 100px;
+      border: 1.5px solid var(--g5); background: var(--white);
+      font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500;
+      color: var(--g3); cursor: pointer;
+      transition: all .18s;
+    }
+    .filter-pill svg { width: 11px; height: 11px; }
+    .filter-pill:hover { border-color: var(--g4); color: var(--black); }
+    .filter-pill.active {
+      background: var(--black); color: var(--white);
+      border-color: var(--black);
+    }
+    .filter-gap { flex: 1; }
+    .search-wrap {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 12px; border: 1.5px solid var(--g5);
+      border-radius: 100px; background: var(--white);
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .search-wrap:focus-within {
+      border-color: rgba(0,0,0,0.2);
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.04);
+    }
+    .search-wrap svg { width: 12px; height: 12px; color: var(--g4); flex-shrink: 0; }
+    .search-inp {
+      border: none; outline: none; background: none;
+      font-family: 'DM Sans', sans-serif; font-size: 12.5px; color: var(--black);
+      width: 160px;
+    }
+    .search-inp::placeholder { color: var(--g4); }
+
+    /* ── SESSION CARDS ── */
+    .sessions-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .s-card {
+      display: flex; align-items: stretch; gap: 0;
+      background: var(--white); border: 1px solid var(--g5);
+      border-radius: var(--r-lg); overflow: hidden;
+      box-shadow: var(--sh-card);
+      text-decoration: none; color: inherit;
+      transition: box-shadow .25s, transform .25s, border-color .25s;
+      position: relative;
+    }
+    .s-card:hover {
+      box-shadow: var(--sh-hover);
+      transform: translateY(-2px);
+      border-color: rgba(0,0,0,0.1);
+    }
+
+    /* Left accent stripe */
+    .s-stripe {
+      width: 4px; flex-shrink: 0;
+      background: var(--g5);
+      transition: background .2s;
+    }
+    .s-card:hover .s-stripe { background: var(--black); }
+    .s-card.type-youtube .s-stripe { background: #ff4e4e; }
+    .s-card.type-pdf     .s-stripe { background: #1a6eff; }
+    .s-card.type-topic   .s-stripe { background: var(--g4); }
+    .s-card.type-youtube:hover .s-stripe { background: #e53935; }
+    .s-card.type-pdf:hover     .s-stripe { background: #0051cc; }
+    .s-card.type-topic:hover   .s-stripe { background: var(--black); }
+
+    /* Card body */
+    .s-body {
+      flex: 1; padding: 16px 18px;
+      display: flex; align-items: center; gap: 14px; min-width: 0;
+    }
+
+    /* Type icon bubble */
+    .s-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; font-size: 16px;
+    }
+    .type-youtube .s-icon { background: #fff0f0; }
+    .type-pdf     .s-icon { background: #f0f4ff; }
+    .type-topic   .s-icon { background: var(--g7); }
+
+    .s-icon svg { width: 16px; height: 16px; }
+    .type-youtube .s-icon svg { color: #e53935; }
+    .type-pdf     .s-icon svg { color: #1a6eff; }
+    .type-topic   .s-icon svg { color: var(--g3); }
+
+    /* Main text */
+    .s-info { flex: 1; min-width: 0; }
+    .s-topic {
+      font-size: 14px; font-weight: 600; letter-spacing: -.15px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      line-height: 1.3;
+    }
+    .s-meta {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 4px; flex-wrap: wrap;
+    }
+    .s-meta-item {
+      display: flex; align-items: center; gap: 3px;
+      font-size: 11.5px; color: var(--g4); font-weight: 400;
+    }
+    .s-meta-item svg { width: 10px; height: 10px; }
+    .s-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--g5); }
+
+    /* Right side */
+    .s-right {
+      display: flex; flex-direction: column; align-items: flex-end;
+      justify-content: space-between; padding: 16px 18px 16px 0;
+      gap: 8px; flex-shrink: 0;
+    }
+    .s-badge {
+      font-size: 10.5px; font-weight: 600;
+      padding: 3px 9px; border-radius: 100px;
+    }
+    .type-youtube .s-badge { background: #fff0f0; color: #c62828; }
+    .type-pdf     .s-badge { background: #f0f4ff; color: #1239a0; }
+    .type-topic   .s-badge { background: var(--g7); color: var(--g3); border: 1px solid var(--g5); }
+
+    .s-date {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px; color: var(--g4);
+    }
+    .s-arrow {
+      width: 26px; height: 26px; border-radius: 7px;
+      background: var(--g7); border: 1px solid var(--g5);
+      display: flex; align-items: center; justify-content: center;
+      transition: background .18s, border-color .18s, transform .18s;
+    }
+    .s-arrow svg { width: 11px; height: 11px; color: var(--g3); }
+    .s-card:hover .s-arrow {
+      background: var(--black); border-color: var(--black); transform: translateX(2px);
+    }
+    .s-card:hover .s-arrow svg { color: var(--white); }
+
+    /* ── EMPTY STATE ── */
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; text-align: center;
+      padding: 80px 40px; gap: 14px;
+    }
+    .empty-icon {
+      width: 60px; height: 60px; border-radius: 16px;
+      background: var(--g7); border: 1px solid var(--g5);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 4px;
+    }
+    .empty-icon svg { width: 24px; height: 24px; color: var(--g4); }
+    .empty-h { font-size: 17px; font-weight: 600; letter-spacing: -.3px; }
+    .empty-p { font-size: 13.5px; color: var(--g3); font-weight: 300; max-width: 260px; line-height: 1.65; }
+    .empty-btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      margin-top: 6px; padding: 10px 22px; border-radius: 100px;
+      background: var(--black); color: var(--white); border: none;
+      cursor: pointer; font-family: 'DM Sans', sans-serif;
+      font-size: 13px; font-weight: 500; text-decoration: none;
+      transition: background .18s, box-shadow .18s, transform .18s;
+    }
+    .empty-btn svg { width: 13px; height: 13px; }
+    .empty-btn:hover {
+      background: var(--g1); transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    }
+
+    /* ── NO RESULTS ── */
+    .no-results {
+      text-align: center; padding: 48px 24px;
+      font-size: 13.5px; color: var(--g4); display: none;
+    }
+
+    /* ── DELETE CONFIRM ── */
+    .del-confirm {
+      position: fixed; inset: 0; z-index: 500;
+      background: rgba(10,10,10,.18);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .del-confirm.open { display: flex; }
+    .del-box {
+      background: var(--white); border: 1px solid var(--g5);
+      border-radius: var(--r-lg); padding: 28px; max-width: 360px; width: 100%;
+      box-shadow: 0 8px 32px rgba(0,0,0,.1), 0 32px 64px rgba(0,0,0,.06);
+    }
+    .del-box h3 { font-size: 16px; font-weight: 600; letter-spacing: -.2px; margin-bottom: 6px; }
+    .del-box p  { font-size: 13px; color: var(--g3); line-height: 1.6; margin-bottom: 20px; }
+    .del-actions { display: flex; gap: 8px; }
+    .del-btn {
+      flex: 1; padding: 10px; border-radius: var(--r);
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+      border: none; cursor: pointer; transition: all .18s;
+    }
+    .del-cancel { background: var(--g6); color: var(--g2); }
+    .del-cancel:hover { background: var(--g5); color: var(--black); }
+    .del-go { background: #e53935; color: var(--white); }
+    .del-go:hover { background: #c62828; box-shadow: 0 4px 14px rgba(200,0,0,.2); }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed; bottom: 20px; left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background: var(--black); color: var(--white);
+      padding: 9px 20px; border-radius: 100px; font-size: 13px;
+      box-shadow: 0 8px 28px rgba(0,0,0,.2);
+      opacity: 0; pointer-events: none; z-index: 600;
+      transition: opacity .26s, transform .26s; white-space: nowrap;
+    }
+    .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 600px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .page { padding: 32px 16px 80px; }
+      .s-date { display: none; }
+    }
+  </style>
 </head>
 <body>
-<aside class="sidebar">
-  <div class="sidebar-brand"><a href="/" class="brand-logo">Study<span>AI</span></a></div>
-  <div class="sidebar-section">
-    <div class="sidebar-section-label">Navigate</div>
-    <nav class="sidebar-nav">
-      <a href="/dashboard" class="nav-item"><span class="ni">🏠</span> Dashboard</a>
-      <a href="/dashboard" class="nav-item"><span class="ni">✦</span> New Session</a>
-      <a href="/history"   class="nav-item active"><span class="ni">📋</span> History</a>
-      <a href="/profile"   class="nav-item"><span class="ni">👤</span> Profile</a>
-      <a href="/about"     class="nav-item"><span class="ni">ℹ️</span> About</a>
-    </nav>
-  </div>
-  <div class="sidebar-bottom">
-    <div class="user-card">
-      <div class="user-avatar">{{ user.avatar_seed or user.username[:2].upper() }}</div>
-      <div><div class="user-name">{{ user.full_name or user.username }}</div></div>
-      <button class="logout-btn" onclick="fetch('/api/auth/logout',{method:'POST'}).then(()=>location.href='/')">⏻</button>
+
+<!-- ── TOPBAR ── -->
+<header class="topbar">
+  <a href="/dashboard" class="tb-btn" title="Dashboard">
+    <i data-lucide="arrow-left"></i>
+  </a>
+  <a href="/" class="tb-logo">StudyAI</a>
+  <div class="tb-sep"></div>
+  <span class="tb-title">History</span>
+  <div class="tb-gap"></div>
+  <a href="/dashboard" class="tb-btn" title="New Space">
+    <i data-lucide="plus"></i>
+  </a>
+  <a href="/profile" class="tb-btn" title="Profile">
+    <i data-lucide="user"></i>
+  </a>
+</header>
+
+<!-- ── PAGE ── -->
+<main class="page" id="page">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="page-header-left">
+      <div class="page-kicker">
+        <i data-lucide="clock"></i>
+        Your learning journey
+      </div>
+      <h1 class="page-h1">Study History</h1>
+      <p class="page-sub">Every space you've worked through, all in one place.</p>
     </div>
   </div>
-</aside>
-<main class="main">
-  <div class="topbar">
-    <div class="topbar-title">Session History</div>
-  </div>
-  <div class="content-area">
-    <div class="page-hdr">
-      <div class="page-tag">All Sessions</div>
-      <div class="page-title">Your Learning Journey</div>
+
+  <!-- Stats -->
+  {% set total = sessions | length %}
+  {% set yt_count    = sessions | selectattr('content_type','equalto','youtube') | list | length %}
+  {% set pdf_count   = sessions | selectattr('content_type','equalto','pdf')     | list | length %}
+  {% set topic_count = sessions | selectattr('content_type','equalto','topic')   | list | length %}
+
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card">
+      <div class="stat-num" id="stat-total">0</div>
+      <div class="stat-lbl">Total spaces</div>
     </div>
-    {% if sessions %}
-    <table class="history-table">
-      <thead>
-        <tr>
-          <th>Topic</th><th>Category</th><th>Level</th><th>Date</th><th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for s in sessions %}
-        <tr class="history-row" onclick="location.href='/session/{{ s.sid }}'">
-          <td>
-            <div class="ht-topic">{{ s.topic }}</div>
-            <div class="ht-goal">{{ s.learning_goal[:60] }}{% if s.learning_goal|length > 60 %}…{% endif %}</div>
-          </td>
-          <td><span class="ht-cat">{{ s.category }}</span></td>
-          <td><span class="ht-level">{{ s.knowledge_lvl[:20] }}</span></td>
-          <td><span class="ht-date">{{ s.created_at.strftime('%b %d, %Y') }}</span></td>
-          <td><a href="/session/{{ s.sid }}" class="ht-open" onclick="event.stopPropagation()">Open →</a></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="empty-state">
-      <div class="es-icon">📚</div>
-      <div class="es-title">No sessions yet</div>
-      <div class="es-sub">Start your first AI-powered learning session</div>
-      <a href="/dashboard" class="btn-primary">+ New Session</a>
+    <div class="stat-card">
+      <div class="stat-num" id="stat-yt">0</div>
+      <div class="stat-lbl">YouTube videos</div>
     </div>
-    {% endif %}
+    <div class="stat-card">
+      <div class="stat-num" id="stat-other">0</div>
+      <div class="stat-lbl">PDFs &amp; topics</div>
+    </div>
   </div>
+
+  {% if sessions %}
+
+  <!-- Filter + Search -->
+  <div class="filter-bar" id="filter-bar">
+    <button class="filter-pill active" data-filter="all" onclick="setFilter('all', this)">
+      <i data-lucide="layout-grid"></i> All
+    </button>
+    <button class="filter-pill" data-filter="youtube" onclick="setFilter('youtube', this)">
+      <i data-lucide="play-circle"></i> YouTube
+    </button>
+    <button class="filter-pill" data-filter="pdf" onclick="setFilter('pdf', this)">
+      <i data-lucide="file-text"></i> PDF
+    </button>
+    <button class="filter-pill" data-filter="topic" onclick="setFilter('topic', this)">
+      <i data-lucide="book-open"></i> Topic
+    </button>
+    <div class="filter-gap"></div>
+    <div class="search-wrap">
+      <i data-lucide="search"></i>
+      <input class="search-inp" id="search-inp" type="text" placeholder="Search spaces…" oninput="onSearch(this.value)"/>
+    </div>
+  </div>
+
+  <!-- Cards -->
+  <div class="sessions-list" id="sessions-list">
+    {% for s in sessions %}
+    {% set ctype = s.content_type or 'topic' %}
+    {% set title = s.video_title or s.topic or 'Untitled Space' %}
+    {% set icount = s.interactions | length %}
+    <a
+      class="s-card type-{{ ctype }}"
+      href="/session/{{ s.sid }}"
+      data-type="{{ ctype }}"
+      data-topic="{{ title | lower }}"
+      data-sid="{{ s.sid }}"
+      id="card-{{ s.sid }}"
+    >
+      <div class="s-stripe"></div>
+      <div class="s-body">
+        <!-- Icon -->
+        <div class="s-icon">
+          {% if ctype == 'youtube' %}
+            <i data-lucide="play-circle"></i>
+          {% elif ctype == 'pdf' %}
+            <i data-lucide="file-text"></i>
+          {% else %}
+            <i data-lucide="book-open"></i>
+          {% endif %}
+        </div>
+
+        <!-- Info -->
+        <div class="s-info">
+          <div class="s-topic">{{ title }}</div>
+          <div class="s-meta">
+            {% if s.category %}
+            <span class="s-meta-item">
+              <i data-lucide="tag"></i>
+              {{ s.category }}
+            </span>
+            <span class="s-dot"></span>
+            {% endif %}
+            {% if s.knowledge_lvl %}
+            <span class="s-meta-item">
+              <i data-lucide="bar-chart-2"></i>
+              {{ s.knowledge_lvl }}
+            </span>
+            <span class="s-dot"></span>
+            {% endif %}
+            <span class="s-meta-item">
+              <i data-lucide="message-circle"></i>
+              {{ icount }} message{{ '' if icount == 1 else 's' }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="s-right">
+        <span class="s-badge">
+          {% if ctype == 'youtube' %}YouTube
+          {% elif ctype == 'pdf' %}PDF
+          {% else %}Topic{% endif %}
+        </span>
+        <span class="s-date">{{ s.created_at.strftime('%b %d, %Y') }}</span>
+        <div class="s-arrow">
+          <i data-lucide="arrow-right"></i>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="no-results" id="no-results">No spaces match your search.</div>
+
+  {% else %}
+
+  <!-- Empty state -->
+  <div class="empty-state">
+    <div class="empty-icon"><i data-lucide="inbox"></i></div>
+    <h2 class="empty-h">No spaces yet</h2>
+    <p class="empty-p">Start by creating a space on the dashboard — paste a YouTube link, upload a PDF, or enter a topic.</p>
+    <a href="/dashboard" class="empty-btn">
+      <i data-lucide="plus"></i>
+      Create your first space
+    </a>
+  </div>
+
+  {% endif %}
+
 </main>
+
+<!-- Delete confirm modal -->
+<div class="del-confirm" id="del-confirm">
+  <div class="del-box">
+    <h3>Delete this space?</h3>
+    <p>This will permanently remove the space and all its interactions. You can't undo this.</p>
+    <div class="del-actions">
+      <button class="del-btn del-cancel" onclick="closeDelete()">Cancel</button>
+      <button class="del-btn del-go" id="del-go-btn" onclick="confirmDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  CustomEase.create("smooth", "M0,0 C0.16,0 0.17,0.96 0.48,0.98 0.7,1 0.84,1 1,1");
+  CustomEase.create("pop",    "M0,0 C0.12,0 0.16,1.12 0.5,1.04 0.7,1 0.84,1 1,1");
+
+  // ── Data from server ──────────────────────────────────────────────────────
+  const TOTAL     = {{ total }};
+  const YT_COUNT  = {{ yt_count }};
+  const OTHER     = {{ pdf_count + topic_count }};
+
+  // ── Entrance ──────────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', () => {
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    const tl = gsap.timeline({ defaults: { ease: 'smooth' } });
+    tl
+      .set('#page', { opacity: 1 })
+      .fromTo('.topbar',       { opacity:0, y:-8   }, { opacity:1, y:0, duration:.35 })
+      .fromTo('.page-kicker, .page-h1, .page-sub',
+                               { opacity:0, y:12   }, { opacity:1, y:0, duration:.4, stagger:.06 }, .1)
+      .fromTo('.stat-card',    { opacity:0, y:16, scale:.97 },
+                               { opacity:1, y:0,  scale:1,  duration:.38, stagger:.07, ease:'pop' }, .2)
+      .fromTo('.filter-bar',   { opacity:0, y:8   }, { opacity:1, y:0, duration:.3 }, .35)
+      .fromTo('.s-card',       { opacity:0, y:14, scale:.98 },
+                               { opacity:1, y:0,  scale:1,  duration:.32, stagger:.055, ease:'pop' }, .4);
+
+    // Animate counters
+    animateCount('stat-total', TOTAL);
+    animateCount('stat-yt',    YT_COUNT);
+    animateCount('stat-other', OTHER);
+  });
+
+  function animateCount(id, target) {
+    const el = document.getElementById(id);
+    if (!el || target === 0) { if(el) el.textContent = '0'; return; }
+    gsap.fromTo({ val: 0 }, { val: target },
+      { duration: .9, ease: 'power2.out', delay: .3,
+        onUpdate: function() { el.textContent = Math.round(this.targets()[0].val); }
+      }
+    );
+  }
+
+  // ── Filter ────────────────────────────────────────────────────────────────
+  let activeFilter = 'all';
+  let searchQuery  = '';
+
+  function setFilter(type, btn) {
+    activeFilter = type;
+    document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    applyFilters();
+  }
+
+  function onSearch(val) {
+    searchQuery = val.toLowerCase().trim();
+    applyFilters();
+  }
+
+  function applyFilters() {
+    const cards = document.querySelectorAll('.s-card');
+    let visible = 0;
+    cards.forEach(card => {
+      const typeMatch   = activeFilter === 'all' || card.dataset.type === activeFilter;
+      const searchMatch = !searchQuery || card.dataset.topic.includes(searchQuery);
+      const show = typeMatch && searchMatch;
+      card.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    const noRes = document.getElementById('no-results');
+    if (noRes) noRes.style.display = visible === 0 ? 'block' : 'none';
+  }
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+  let _deleteSid = null;
+
+  function openDelete(sid, e) {
+    e.preventDefault(); e.stopPropagation();
+    _deleteSid = sid;
+    const modal = document.getElementById('del-confirm');
+    modal.classList.add('open');
+    gsap.fromTo(modal, { opacity:0 }, { opacity:1, duration:.2 });
+    gsap.fromTo(modal.querySelector('.del-box'),
+      { opacity:0, scale:.93, y:12 },
+      { opacity:1, scale:1, y:0, duration:.3, ease:'pop' }
+    );
+  }
+
+  function closeDelete() {
+    const modal = document.getElementById('del-confirm');
+    gsap.to(modal.querySelector('.del-box'), { opacity:0, scale:.93, y:8, duration:.2, ease:'power2.in' });
+    gsap.to(modal, { opacity:0, duration:.25, onComplete: () => modal.classList.remove('open') });
+    _deleteSid = null;
+  }
+
+  async function confirmDelete() {
+    if (!_deleteSid) return;
+    const btn = document.getElementById('del-go-btn');
+    btn.textContent = 'Deleting…'; btn.disabled = true;
+    try {
+      const res  = await fetch(`/api/session/${_deleteSid}/delete`, { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        const card = document.getElementById(`card-${_deleteSid}`);
+        if (card) {
+          gsap.to(card, { opacity:0, x:-20, height:0, marginBottom:0, padding:0,
+            duration:.32, ease:'power2.in', onComplete: () => card.remove() });
+        }
+        showToast('Space deleted');
+        closeDelete();
+      } else {
+        showToast(data.error || 'Delete failed');
+      }
+    } catch {
+      showToast('Network error');
+    }
+    btn.textContent = 'Delete'; btn.disabled = false;
+  }
+
+  // Right-click / long-press context: attach delete via keyboard shortcut or button
+  // For now expose as a global for future context menu
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeDelete();
+  });
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  let _toastT;
+  function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('on');
+    clearTimeout(_toastT);
+    _toastT = setTimeout(() => el.classList.remove('on'), 3000);
+  }
+</script>
 </body>
 </html>

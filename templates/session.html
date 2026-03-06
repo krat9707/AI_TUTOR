@@ -37,11 +37,15 @@
 
     {% if session.content_type == 'youtube' %}
     <span class="tb-badge youtube">
-      <i data-lucide="youtube"></i> YouTube
+      <i data-lucide="play-circle"></i> YouTube
     </span>
     {% elif session.content_type == 'pdf' %}
     <span class="tb-badge pdf">
       <i data-lucide="file-text"></i> PDF
+    </span>
+    {% elif session.content_type == 'text' %}
+    <span class="tb-badge topic">
+      <i data-lucide="align-left"></i> Text
     </span>
     {% else %}
     <span class="tb-badge topic">
@@ -125,6 +129,25 @@
       </div>
       <div class="pdf-frame">
         <iframe id="pdf-iframe" src="/api/session/{{ session.sid }}/pdf_view" title="PDF Viewer"></iframe>
+      </div>
+    </div>
+
+    {% elif session.content_type == 'text' %}
+    <!-- Pasted text reader -->
+    <div class="text-reader-area">
+      <div class="text-reader-header">
+        <div class="text-reader-title">
+          <i data-lucide="file-text" style="width:14px;height:14px;color:var(--g4)"></i>
+          {{ session.topic or 'Pasted Content' }}
+        </div>
+        <span class="text-reader-wc" id="word-count"></span>
+      </div>
+      <div class="text-reader-body" id="text-reader-body">
+        {% if session.raw_text %}
+          {{ session.raw_text }}
+        {% else %}
+          <span style="color:var(--g4)">Text content is not available for display.</span>
+        {% endif %}
       </div>
     </div>
 

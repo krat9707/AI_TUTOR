@@ -46,6 +46,15 @@ function entrance() {
   // Load transcript if YouTube
   if (IS_YOUTUBE) loadTranscript();
 
+  // Word count for pasted text
+  const textBody = document.getElementById('text-reader-body');
+  const wcEl     = document.getElementById('word-count');
+  if (textBody && wcEl) {
+    const words = textBody.textContent.trim().split(/\s+/).filter(Boolean).length;
+    const mins  = Math.ceil(words / 200);
+    wcEl.textContent = `${words.toLocaleString()} words · ${mins} min read`;
+  }
+
   // Tab slider initial position
   setTimeout(updateSlider, 50);
 }
@@ -414,16 +423,49 @@ function renderQuizText(text) {
 function pickOpt(qi, oi) {
   const q = quizData[qi];
   if (!q) return;
+  const correctIdx = resolveCorrectIdx(q);
   document.querySelectorAll(`[data-qi="${qi}"]`).forEach((el, j) => {
     el.classList.remove('correct', 'wrong');
-    const opt = q.options?.[j];
-    const ans = q.answer || q.correct_answer || '';
-    if (opt === ans) el.classList.add('correct');
-    else if (j === oi) el.classList.add('wrong');
+    if (j === correctIdx) el.classList.add('correct');
+    else if (j === oi)    el.classList.add('wrong');
   });
   gsap.fromTo(`[data-qi="${qi}"][data-oi="${oi}"]`,
     { scale:.96 }, { scale:1, duration:.22, ease:'back.out(2)' }
   );
+}
+
+// ── Answer resolution helper ────────────────────────────────────────────────
+// Models return answer in many formats:
+//   "A"  |  "A."  |  "A. Option text"  |  "Option text"  |  0 (index)
+function resolveCorrectIdx(q) {
+  const ans = (q.answer || q.correct_answer || '').toString().trim();
+  const opts = q.options || [];
+  if (!ans) return -1;
+
+  // 1. Single letter: "A" / "B" / "C" / "D"
+  if (/^[A-Da-d]\.?$/.test(ans)) {
+    return ans.toUpperCase().charCodeAt(0) - 65;
+  }
+  // 2. "A. some text" or "A) some text"
+  const letterMatch = ans.match(/^([A-Da-d])[.)]/);
+  if (letterMatch) {
+    return letterMatch[1].toUpperCase().charCodeAt(0) - 65;
+  }
+  // 3. Numeric index
+  if (/^[0-3]$/.test(ans)) return parseInt(ans);
+
+  // 4. Full text match (exact or case-insensitive)
+  const exactIdx = opts.findIndex(o => o === ans);
+  if (exactIdx !== -1) return exactIdx;
+  const ciIdx = opts.findIndex(o => o.toLowerCase() === ans.toLowerCase());
+  if (ciIdx !== -1) return ciIdx;
+
+  // 5. Partial match — answer is contained in option or vice versa
+  const partIdx = opts.findIndex(o =>
+    o.toLowerCase().includes(ans.toLowerCase()) ||
+    ans.toLowerCase().includes(o.toLowerCase())
+  );
+  return partIdx; // -1 if nothing matches
 }
 
 // ── Notes ─────────────────────────────────────────────────────────────────────
@@ -601,9 +643,8 @@ function finishExam() {
   examData.forEach((q, i) => {
     const ai = examAnswers[i];
     if (ai !== undefined) {
-      const chosen = q.options?.[ai];
-      const ans = q.answer || q.correct_answer || '';
-      if (chosen === ans) correct++;
+      const correctIdx = resolveCorrectIdx(q);
+      if (ai === correctIdx) correct++;
     }
   });
   const pct = Math.round(correct / examData.length * 100);

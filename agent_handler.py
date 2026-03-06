@@ -68,6 +68,13 @@ class StudyAssistantHandler:
 
     def _run_agent(self, agent, prompt: str) -> str:
         try:
+            # Non-OpenAI providers (Mistral etc.) reject role:developer
+            # that agno sends via instructions=. If agents stored a
+            # _system_prompt, bypass agno and call the API directly.
+            sys_prompt = getattr(self.agents, "_system_prompt", None)
+            if sys_prompt and not self.agents._is_native_openai():
+                self.agents._system_prompt = None  # consume
+                return self.agents._direct_chat(sys_prompt, prompt).strip()
             resp = agent.run(prompt, stream=False)
             if hasattr(resp, "content"):
                 c = resp.content
@@ -195,16 +202,20 @@ class StudyAssistantHandler:
         difficulty_level: str = "intermediate",
         focus_areas: str = "general",
         num_questions: int = 5,
+        match_content_language: bool = True,
     ) -> str:
         agent = self.agents.quiz_generator_agent()
         rag_ctx = self._full_context(k=10)
+        lang_note = ("Generate the quiz in the SAME language as the content below. Do NOT translate." 
+                    if match_content_language else "Generate in English.")
         if rag_ctx:
             prompt = (
                 f"Generate exactly {num_questions} multiple-choice questions "
                 f"based ONLY on the following content.\n"
-                f"DIFFICULTY: {difficulty_level}\n\n"
+                f"DIFFICULTY: {difficulty_level}\n"
+                f"{lang_note}\n\n"
                 f"CONTENT:\n{rag_ctx}\n\n"
-                "Return ONLY a JSON array:\n"
+                "Return ONLY a JSON array, no other text:\n"
                 '[{"question":"...","options":["A","B","C","D"],"answer":"A","explanation":"..."}]'
             )
         else:
@@ -218,6 +229,24 @@ class StudyAssistantHandler:
         result = self._run_agent(agent, prompt)
         parsed = self._parse_json_response(result)
         if parsed is not None:
+            # Normalise answer field — ensure it's the full option text, not just "A"/"B"
+            for q in parsed:
+                if not isinstance(q, dict):
+                    continue
+                ans = str(q.get('answer', '')).strip()
+                opts = q.get('options', [])
+                if not ans or not opts:
+                    continue
+                import re as _re
+                # If answer is a single letter like "A", "B", "C", "D"
+                letter = _re.match(r'^([A-Da-d])[.)]?\s*$', ans)
+                if letter:
+                    idx = ord(letter.group(1).upper()) - 65
+                    if 0 <= idx < len(opts):
+                        q['answer'] = opts[idx]
+                # If answer is "A. text" — strip the letter prefix
+                elif _re.match(r'^[A-Da-d][.)]\s+', ans):
+                    q['answer'] = _re.sub(r'^[A-Da-d][.)]\s+', '', ans)
             return json.dumps(parsed)
         return result
 
@@ -294,8 +323,16 @@ class StudyAssistantHandler:
 
     # ── RAG ────────────────────────────────────────────────────────────────
 
-    def initialize_rag(self, collection_name: str = "study_materials") -> None:
+    def initialize_rag(self, collection_name: str = "study_materials", persist_directory: str = None) -> None:
+        """Create RAGHelper only if one doesn't already exist with loaded chunks.
+        Routes that call this defensively (summarize, quiz etc.) won't wipe loaded data.
+        Pass force=True is not possible here but content-loading methods always call load_raw
+        directly after, so this is safe.
+        """
         from rag_helper import RAGHelper
+        # If we already have a populated RAGHelper, keep it — don't wipe chunks
+        if self.rag_helper is not None and self.rag_helper.count() > 0:
+            return
         self.rag_helper = RAGHelper(collection_name=collection_name)
 
     def add_document_to_rag(self, file_path: str, file_type: str = "pdf") -> bool:
@@ -334,9 +371,10 @@ class StudyAssistantHandler:
     def get_document_count(self) -> int:
         if not self.rag_helper:
             return 0
-        return self.rag_helper.get_document_count()
+        return self.rag_helper.count()
 
     def clear_documents(self) -> bool:
         if not self.rag_helper:
             return False
-        return self.rag_helper.clear_database()
+        self.rag_helper.clear()
+        return True

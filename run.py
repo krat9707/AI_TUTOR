@@ -11,12 +11,6 @@ import threading
 import time
 import webbrowser
 
-# ── Point HuggingFace cache to persistent project subfolder ───────────────
-_CACHE = os.path.join(os.getcwd(), ".hf_cache")
-os.environ["HF_HOME"] = _CACHE
-os.environ["SENTENCE_TRANSFORMERS_HOME"] = _CACHE
-os.environ["TRANSFORMERS_CACHE"] = _CACHE
-
 
 def kill_port(port: int):
     """Kill any process currently listening on the given port."""
@@ -80,6 +74,7 @@ def kill_port(port: int):
     time.sleep(1)  # Let OS release the port
 
 
+
 def _open_browser(port: int):
     time.sleep(2)
     webbrowser.open(f"http://localhost:{port}")
@@ -91,10 +86,9 @@ if __name__ == "__main__":
 
     kill_port(PORT)
 
-    from startup import ensure_packages, preload_model
+    from startup import ensure_packages
     ensure_packages()
-    preload_model()
-    
+
     from app import app
 
     print(f"""
@@ -104,7 +98,7 @@ if __name__ == "__main__":
 ║   🌐  http://localhost:{PORT:<28}  ║
 ║   🔧  Debug mode : {str(DEBUG):<32}  ║
 ║   🗄️  Database   : studyai.db (SQLite)               ║
-║   🧠  RAG store  : ./chroma_db  (local, CPU)         ║
+║   🧠  RAG        : BM25 in-memory (no downloads)     ║
 ╚══════════════════════════════════════════════════════╝
 """)
 

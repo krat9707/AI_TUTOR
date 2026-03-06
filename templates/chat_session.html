@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{{ session.topic or 'Chat' }} — StudyAI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/chat_session.css') }}"/>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/CustomEase.min.js"></script>
+</head>
+<body>
+
+<div id="loader">
+  <div class="ld" style="animation:ldp 1s 0s ease-in-out infinite alternate"></div>
+  <div class="ld" style="animation:ldp 1s .2s ease-in-out infinite alternate"></div>
+  <div class="ld" style="animation:ldp 1s .4s ease-in-out infinite alternate"></div>
+</div>
+
+<div class="layout" id="layout">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <a href="/dashboard" class="tb-btn"><i data-lucide="arrow-left"></i></a>
+    <a href="/" class="tb-logo">StudyAI</a>
+    <div class="tb-sep"></div>
+    <span class="tb-name">{{ session.topic or 'Chat Session' }}</span>
+    <span class="tb-badge"><i data-lucide="message-circle"></i> Chat</span>
+    <div class="tb-gap"></div>
+    <button class="tb-btn" onclick="toast('Share coming soon')"><i data-lucide="share-2"></i></button>
+  </header>
+
+  <!-- THREAD TAB BAR -->
+  <div class="tab-bar-wrap">
+    <nav class="tab-bar" id="tab-bar">
+      <div id="thread-tabs" style="display:contents"></div>
+      <button class="tab-new-btn" onclick="newThread()" title="New chat">
+        <i data-lucide="plus"></i>
+      </button>
+      <div id="tab-slider"></div>
+    </nav>
+  </div>
+
+  <!-- CHAT AREA -->
+  <main class="chat-area" id="chat-area">
+    <div class="chat-messages" id="chat-messages">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon"><i data-lucide="sparkles"></i></div>
+        <div class="empty-title">What do you want to learn?</div>
+        <div class="empty-sub">Ask anything — I'll explain, quiz you, and help it stick.</div>
+        <div class="starter-chips">
+          <div class="chip" onclick="sendStarter(this)">Explain recursion simply</div>
+          <div class="chip" onclick="sendStarter(this)">Quiz me on photosynthesis</div>
+          <div class="chip" onclick="sendStarter(this)">How does the stock market work?</div>
+          <div class="chip" onclick="sendStarter(this)">Summarise the French Revolution</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating input bar -->
+    <div class="input-bar" id="input-bar">
+      <div class="input-wrap">
+        <textarea class="chat-input" id="chat-input"
+          placeholder="Learn anything…" rows="1"
+          onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <div class="input-right">
+          <button class="ia-btn" onclick="triggerQuiz()" title="Quick quiz">
+            <i data-lucide="check-square"></i>
+          </button>
+          <button class="ia-btn" title="Attach (coming soon)" onclick="toast('Attachments coming soon')">
+            <i data-lucide="paperclip"></i>
+          </button>
+          <button class="send-btn" id="send-btn" onclick="sendMessage()">
+            <i data-lucide="arrow-up"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="{{ url_for('static', filename='js/chat_session.js') }}"></script>
+<script>
+  const SESSION_ID    = "{{ session.sid }}";
+  const SESSION_TOPIC = {{ session.topic | tojson }};
+</script>
+</body>
+</html>

@@ -187,11 +187,11 @@ async function handleFile(file) {
   if (!['pdf','txt'].includes(ext)) { toast('Only PDF and TXT supported.'); return; }
   prog('Creating space…', 15);
   const topic = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+  // Session uses user's active model preference (set in dashboard model switcher)
   const sd = await api('/api/session/create', {
     topic, category: '', knowledge_level: 'intermediate',
     learning_goal: '', time_available: '5-10 hrs/week',
-    learning_style: 'reading', provider: 'groq',
-    model: 'llama-3.3-70b-versatile',
+    learning_style: 'reading',
     content_type: ext === 'pdf' ? 'pdf' : 'text'
   });
   if (!sd.ok) { toast('Failed to create space.'); hideProg(); return; }
@@ -199,7 +199,8 @@ async function handleFile(file) {
   const fd = new FormData(); fd.append('file', file);
   const ud = await fetch(`/api/session/${sd.sid}/upload_doc`, { method: 'POST', body: fd }).then(r => r.json());
   if (!ud.ok) { toast('Upload failed.'); hideProg(); return; }
-  prog('Done!', 100);
+  const figMsg = ud.figures > 0 ? ` · ${ud.figures} figures` : '';
+  prog(`Processed · ${ud.chunks} chunks${figMsg}`, 100);
   setTimeout(() => { hideProg(); location.href = `/session/${sd.sid}`; }, 500);
 }
 
@@ -301,6 +302,25 @@ async function doPaste() {
   if (!ud.ok) { toast('Failed.'); hideProg(); return; }
   prog('Done!', 100);
   setTimeout(() => { hideProg(); location.href = `/session/${sd.sid}`; }, 500);
+}
+
+// ─── CREATE CHAT SPACE ───
+async function doChat() {
+  const topic = document.getElementById('chat-topic')?.value.trim();
+  if (!topic) { document.getElementById('chat-topic')?.focus(); return; }
+  const btn = document.getElementById('chat-btn');
+  btn.textContent = 'Creating…'; btn.disabled = true;
+  closeModal('modal-chat');
+  prog('Creating chat space…', 40);
+  const sd = await api('/api/session/create', {
+    topic, category: '', knowledge_level: 'intermediate',
+    learning_goal: '', time_available: '5-10 hrs/week',
+    learning_style: 'reading', content_type: 'chat'
+  });
+  btn.textContent = 'Start chatting →'; btn.disabled = false;
+  if (!sd.ok) { toast('Failed to create chat.'); hideProg(); return; }
+  prog('Done!', 100);
+  setTimeout(() => { hideProg(); location.href = `/chat/${sd.sid}`; }, 400);
 }
 
 // ─── CREATE TOPIC SPACE ───
@@ -425,9 +445,83 @@ async function logout() {
 // ─── ESC ───
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  ['modal-upload','modal-link','modal-paste','modal-topic'].forEach(id => {
+  ['modal-upload','modal-link','modal-paste','modal-topic','modal-chat'].forEach(id => {
     const el = document.getElementById(id);
     if (el?.classList.contains('is-open')) closeModal(id);
   });
   closeCtx();
 });
+
+// ─── MODEL TOGGLE ─────────────────────────────────────────────────────────────
+let _modelMenuOpen = false;
+
+
+async function initModelToggle() {
+  try {
+    const res  = await fetch('/api/user/models');
+    const data = await res.json();
+    if (!data.ok) return;
+
+    const activeBtn = document.querySelector('.mt-item.active');
+    const activeId  = activeBtn?.dataset.id;
+    const active    = data.models.find(m => m.id === activeId)
+                   || data.models.find(m => m.available)
+                   || data.models[0];
+
+    if (active) {
+      document.getElementById('mt-label').textContent = active.label;
+      document.getElementById('mt-dot').style.background = active.badge_color;
+    }
+  } catch(e) {}
+}
+
+
+function toggleModelMenu() {
+  _modelMenuOpen = !_modelMenuOpen;
+  const menu    = document.getElementById('mt-menu');
+  const trigger = document.getElementById('mt-trigger');
+  if (_modelMenuOpen) {
+    menu.classList.add('open');
+    trigger.classList.add('open');
+    gsap.fromTo(menu,
+      { opacity:0, y:-8, scale:.97 },
+      { opacity:1, y:0,  scale:1, duration:.22, ease:'power2.out' }
+    );
+
+  } else {
+    gsap.to(menu, { opacity:0, y:-6, scale:.97, duration:.16, ease:'power2.in',
+      onComplete: () => { menu.classList.remove('open'); trigger.classList.remove('open'); }
+    });
+  }
+}
+
+async function selectModel(id, label, color) {
+  // Optimistic UI update
+  document.getElementById('mt-label').textContent = label;
+  document.getElementById('mt-dot').style.background = color;
+  document.querySelectorAll('.mt-item').forEach(b => b.classList.toggle('active', b.dataset.id === id));
+  toggleModelMenu();
+
+  try {
+    const res  = await fetch('/api/user/model', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ model_id: id })
+    });
+    const data = await res.json();
+    if (!data.ok) showToast(data.error || 'Failed to switch model');
+    else showToast(`Switched to ${label}`);
+  } catch(e) {
+    showToast('Network error');
+  }
+}
+
+// Close menu on outside click
+document.addEventListener('click', e => {
+  if (!_modelMenuOpen) return;
+  const toggle = document.getElementById('model-toggle');
+  if (toggle && !toggle.contains(e.target)) toggleModelMenu();
+});
+
+// Init on load
+document.addEventListener('DOMContentLoaded', initModelToggle);

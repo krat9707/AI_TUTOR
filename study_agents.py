@@ -37,8 +37,8 @@ class StudyAgents:
         learning_goal: str,
         time_available: str,
         learning_style: str,
-        model_name: str = "qwen3-vl-30b-a3b-thinking",
-        provider: str = "openrouter",
+        model_name: str = "llama-3.3-70b-versatile",
+        provider: str = "groq",
     ) -> None:
         self.topic = topic
         self.subject_category = subject_category
@@ -49,6 +49,7 @@ class StudyAgents:
         self.model_name = model_name
         self.provider = provider
         self._cfg = self._load_config()
+        self._system_prompt: str = ""
 
     def _load_config(self) -> dict:
         base = os.path.dirname(os.path.abspath(__file__))
@@ -63,42 +64,30 @@ class StudyAgents:
         return dict(self._cfg.get("learning_styles", {}).get(self.learning_style, {}))
 
     def _get_model(self, temperature: float = 0.7) -> Any:
-        openrouter_key = os.getenv("OPENROUTER_API_KEY")
-        groq_key = os.getenv("GROQ_API_KEY")
-
-        print(openrouter_key)
-        print(groq_key)
+        from providers import get_api_key, PROVIDERS
+        provider_cfg = PROVIDERS.get(self.provider, {})
+        base_url = provider_cfg.get("base_url", "")
+        api_key  = get_api_key(self.provider)
 
         if FRAMEWORK == "agno":
-            if groq_key:
-                from agno.models.groq import Groq
+            if self.provider == "groq":
+                from agno.models.groq import Groq  # type: ignore[import]
                 return Groq(id=self.model_name, temperature=temperature)
-            elif openrouter_key:
-                from agno.models.openai import OpenAIChat
-                return OpenAIChat(
-                    id=self.model_name,
-                    temperature=temperature,
-                    api_key=openrouter_key,
-                    base_url="https://openrouter.ai/api/v1",
-                )
-            else:
-                raise ValueError("No API key found. Set OPENROUTER_API_KEY or GROQ_API_KEY")
-
+            from agno.models.openai import OpenAIChat  # type: ignore[import]
+            if base_url and api_key:
+                return OpenAIChat(id=self.model_name, api_key=api_key,
+                                  base_url=base_url, temperature=temperature)
+            return OpenAIChat(id=self.model_name, temperature=temperature)
         else:
-            if groq_key:
-                from phi.model.groq import Groq
+            if self.provider == "groq":
+                from phi.model.groq import Groq  # type: ignore[import]
                 return Groq(id=self.model_name, temperature=temperature)
-            elif openrouter_key:
-                from phi.model.openai import OpenAIChat
-                return OpenAIChat(
-                    id=self.model_name,
-                    temperature=temperature,
-                    api_key=openrouter_key,
-                    base_url="https://openrouter.ai/api/v1",
-                )
-            else:
-                raise ValueError("No API key found.")
-                
+            from phi.model.openai import OpenAIChat  # type: ignore[import]
+            if base_url and api_key:
+                return OpenAIChat(id=self.model_name, api_key=api_key,
+                                  base_url=base_url, temperature=temperature)
+            return OpenAIChat(id=self.model_name, temperature=temperature)
+
     def _get_search_tools(self) -> List[Any]:
         try:
             if FRAMEWORK == "agno":
@@ -107,17 +96,35 @@ class StudyAgents:
             from phi.tools.duckduckgo import DuckDuckGo  # type: ignore[import]
             return [DuckDuckGo()]
         except ImportError:
-            print("⚠️  DuckDuckGo not available — resource search uses model knowledge only.")
+            print("⚠️  DuckDuckGo not available")
             return []
 
-    def _make_agent(
-        self,
-        system_prompt: str,
-        temperature: float = 0.7,
-        use_search: bool = False,
-    ) -> Any:
+    def _is_native_openai(self) -> bool:
+        return self.provider == "openai"
+
+    def _direct_chat(self, system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
+        """Bypass agno entirely — call API directly with role:system, not role:developer."""
+        from providers import get_api_key, PROVIDERS
+        from openai import OpenAI
+        cfg      = PROVIDERS.get(self.provider, {})
+        api_key  = get_api_key(self.provider)
+        base_url = cfg.get("base_url", "")
+        client   = OpenAI(api_key=api_key, base_url=base_url)
+        resp = client.chat.completions.create(
+            model=self.model_name,
+            temperature=temperature,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt},
+            ],
+        )
+        return resp.choices[0].message.content or ""
+
+    def _make_agent(self, system_prompt: str, temperature: float = 0.7, use_search: bool = False) -> Any:
         model = self._get_model(temperature)
         tools = self._get_search_tools() if use_search else []
+        # Always store so _run_agent can use _direct_chat for non-OpenAI providers
+        self._system_prompt = system_prompt
 
         if FRAMEWORK == "agno":
             from agno.agent import Agent  # type: ignore[import]
@@ -133,106 +140,94 @@ class StudyAgents:
                 kwargs["show_tool_calls"] = False
             return Agent(**kwargs)
 
-    # ── Agents ─────────────────────────────────────────────────────────────
-
-    def student_analyzer_agent(self) -> Any:
-        style = self._style_info()
-        prompt = f"""{self._persona('student_analyzer')}
-
-You are analysing a student who wants to learn: {self.topic}
-
-STUDENT PROFILE:
-- Current Knowledge Level : {self.knowledge_level}
-- Learning Goal           : {self.learning_goal}
-- Available Time          : {self.time_available}
-- Learning Style          : {self.learning_style}
-- Style Notes             : {style.get('description', '')}
-"""
-        return self._make_agent(prompt, temperature=0.6)
-
-    def roadmap_creator_agent(self) -> Any:
-        style = self._style_info()
-        recs: List[str] = list(style.get("recommendations", []))
-        prompt = f"""{self._persona('roadmap_creator')}
-
-You are creating a personalised learning roadmap for: {self.topic}
-
-STUDENT CONTEXT:
-- Knowledge Level : {self.knowledge_level}
-- Learning Goal   : {self.learning_goal}
-- Time Available  : {self.time_available}
-- Learning Style  : {self.learning_style}
-
-LEARNING STYLE RECOMMENDATIONS:
-{chr(10).join(f'- {r}' for r in recs)}
-"""
-        return self._make_agent(prompt, temperature=0.7)
-
-    def quiz_generator_agent(self) -> Any:
-        prompt = f"""{self._persona('quiz_generator')}
-
-You are creating quizzes for a student learning: {self.topic}
-
-STUDENT LEVEL : {self.knowledge_level}
-LEARNING GOAL : {self.learning_goal}
-"""
-        return self._make_agent(prompt, temperature=0.5)
+    # ── Agent factories ──────────────────────────────────────────────────────
 
     def tutor_agent(self) -> Any:
         style = self._style_info()
-        prompt = f"""{self._persona('tutor_agent')}
-
-You are tutoring a student on: {self.topic}
-
-STUDENT CONTEXT:
-- Knowledge Level : {self.knowledge_level}
-- Learning Style  : {self.learning_style} — {style.get('description', '')}
-"""
+        prompt = (
+            f"{self._persona('tutor_agent')}\n\n"
+            f"You are tutoring a student on: {self.topic}\n\n"
+            f"STUDENT CONTEXT:\n"
+            f"- Knowledge Level : {self.knowledge_level}\n"
+            f"- Learning Style  : {self.learning_style} — {style.get('description', '')}\n"
+        )
         return self._make_agent(prompt, temperature=0.7)
 
-    def resource_finder_agent(self) -> Any:
-        prompt = f"""{self._persona('resource_finder')}
-
-You are finding learning resources for: {self.topic}
-
-STUDENT PREFERENCES:
-- Knowledge Level : {self.knowledge_level}
-- Learning Style  : {self.learning_style}
-- Learning Goal   : {self.learning_goal}
-"""
-        return self._make_agent(prompt, temperature=0.6, use_search=True)
+    def rag_tutor_agent(self) -> Any:
+        prompt = (
+            f"{self._persona('tutor_agent')}\n\n"
+            "You are answering questions grounded STRICTLY in the student's uploaded documents.\n\n"
+            "RULES:\n"
+            "- Use ONLY information from the provided document excerpts\n"
+            "- IGNORE table of contents, index pages, and page number listings\n"
+            "- Focus on actual content paragraphs\n"
+            "- Quote directly from the text when possible\n"
+            "- If the answer is not in the excerpts, say: "
+            "\"This section wasn't retrieved. Try asking about a specific topic instead.\"\n"
+            "- Do NOT use your general knowledge to fill gaps\n"
+            f"- Student level: {self.knowledge_level}\n"
+        )
+        return self._make_agent(prompt, temperature=0.4)
 
     def summarizer_agent(self) -> Any:
-        prompt = f"""{self._persona('summarizer')}
-
-You are summarising content for a student learning: {self.topic}
-Student level: {self.knowledge_level}
-Be comprehensive, clear, and well-structured.
-"""
-        return self._make_agent(prompt, temperature=0.4)
+        prompt = (
+            f"{self._persona('summarizer')}\n\n"
+            f"You are creating a summary for a student studying: {self.topic}\n\n"
+            f"STUDENT CONTEXT:\n"
+            f"- Knowledge Level: {self.knowledge_level}\n"
+            f"- Learning Goal  : {self.learning_goal or 'general understanding'}\n"
+        )
+        return self._make_agent(prompt, temperature=0.5)
 
     def notes_agent(self) -> Any:
-        prompt = f"""{self._persona('notes_writer')}
+        prompt = (
+            f"{self._persona('notes_agent')}\n\n"
+            f"You are generating structured study notes for: {self.topic}\n\n"
+            f"STUDENT CONTEXT:\n"
+            f"- Knowledge Level: {self.knowledge_level}\n"
+            f"- Learning Style : {self.learning_style}\n"
+        )
+        return self._make_agent(prompt, temperature=0.5)
 
-You are writing study notes for a student learning: {self.topic}
-Student level: {self.knowledge_level}
-Learning style: {self.learning_style}
-Make notes scannable, comprehensive, and revision-friendly.
-"""
-        return self._make_agent(prompt, temperature=0.4)
+    def quiz_generator_agent(self) -> Any:
+        prompt = (
+            f"{self._persona('quiz_generator')}\n\n"
+            f"You are generating quiz questions about: {self.topic}\n\n"
+            f"STUDENT CONTEXT:\n"
+            f"- Knowledge Level: {self.knowledge_level}\n"
+        )
+        return self._make_agent(prompt, temperature=0.6)
 
-    def rag_tutor_agent(self) -> Any:
-        prompt = f"""{self._persona('tutor_agent')}
+    def roadmap_creator_agent(self) -> Any:
+        prompt = (
+            f"{self._persona('roadmap_creator')}\n\n"
+            f"You are creating a learning roadmap for: {self.topic}\n\n"
+            f"STUDENT CONTEXT:\n"
+            f"- Knowledge Level: {self.knowledge_level}\n"
+            f"- Learning Goal  : {self.learning_goal or 'master the subject'}\n"
+            f"- Time Available : {self.time_available}\n"
+        )
+        return self._make_agent(prompt, temperature=0.6)
 
-You are answering questions grounded STRICTLY in the student's uploaded documents.
+    def student_analyzer_agent(self) -> Any:
+        prompt = (
+            f"{self._persona('student_analyzer')}\n\n"
+            f"You are analysing a student who wants to learn: {self.topic}\n\n"
+            f"STUDENT PROFILE:\n"
+            f"- Current Knowledge Level : {self.knowledge_level}\n"
+            f"- Learning Goal           : {self.learning_goal}\n"
+            f"- Time Available          : {self.time_available}\n"
+            f"- Preferred Style         : {self.learning_style}\n"
+        )
+        return self._make_agent(prompt, temperature=0.3)
 
-RULES:
-- Use ONLY information from the provided document excerpts
-- IGNORE table of contents, index pages, and page number listings
-- Focus on actual content paragraphs
-- Quote directly from the text when possible
-- If the answer is not in the excerpts, say: "This section wasn't retrieved. Try asking about a specific topic from that section instead."
-- Do NOT use your general knowledge to fill gaps
-- Student level: {self.knowledge_level}
-"""
-        return self._make_agent(prompt, temperature=0.4)
+    def resource_finder_agent(self) -> Any:
+        prompt = (
+            f"{self._persona('resource_finder')}\n\n"
+            f"You are finding learning resources for: {self.topic}\n\n"
+            f"STUDENT PREFERENCES:\n"
+            f"- Knowledge Level : {self.knowledge_level}\n"
+            f"- Learning Style  : {self.learning_style}\n"
+            f"- Learning Goal   : {self.learning_goal}\n"
+        )
+        return self._make_agent(prompt, temperature=0.6, use_search=True)

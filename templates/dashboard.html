@@ -24,7 +24,38 @@
     <a href="/" class="tb-logo">StudyAI.</a>
   </div>
   <div class="tb-right">
-    <a href="#" class="upgrade-btn"><span>Upgrade</span></a>
+    <!-- Model Toggle -->
+    <div class="model-toggle" id="model-toggle">
+      <button class="mt-trigger" id="mt-trigger" onclick="toggleModelMenu()" title="Switch AI model">
+        <span class="mt-dot" id="mt-dot"></span>
+        <span class="mt-label" id="mt-label">Loading…</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="mt-menu" id="mt-menu">
+        <div class="mt-menu-header">AI Model</div>
+        {% for m in models %}
+        <button
+          class="mt-item {% if m.id == user.pref_model_id or (loop.first and not user.pref_model_id) %}active{% endif %}"
+          data-id="{{ m.id }}"
+          data-label="{{ m.label }}"
+          data-color="{{ m.badge_color }}"
+          {% if not m.available %}disabled title="{{ m.env_key }} not set in .env"{% endif %}
+          onclick="selectModel('{{ m.id }}', '{{ m.label }}', '{{ m.badge_color }}')"
+        >
+          <span class="mt-item-dot" style="background:{{ m.badge_color }}"></span>
+          <span class="mt-item-info">
+            <span class="mt-item-name">{{ m.label }}</span>
+            <span class="mt-item-desc">{{ m.description }}</span>
+          </span>
+          <span class="mt-item-badge" style="background:{{ m.badge_color }}1a;color:{{ m.badge_color }}">{{ m.badge }}</span>
+          {% if not m.available %}
+          <span class="mt-item-na">Key missing</span>
+          {% endif %}
+        </button>
+        {% endfor %}
+        <div class="mt-menu-footer">Add models in <code>providers.py</code></div>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -62,6 +93,13 @@
       </div>
       <div class="ac-title">Record</div>
       <div class="ac-sub">Record Lecture</div>
+    </div>
+    <div class="ac" onclick="openModal('modal-chat')">
+      <div class="ac-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <div class="ac-title">Chat</div>
+      <div class="ac-sub">Learn with AI</div>
     </div>
   </div>
 
@@ -204,6 +242,19 @@
     <div class="mactions">
       <button class="mbtn mbtn-cancel" onclick="closeModal('modal-topic')">Cancel</button>
       <button class="mbtn mbtn-go" id="create-btn" onclick="doCreate()">Create Space →</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-chat" onclick="bgClose(event,'modal-chat')">
+  <div class="modal">
+    <div class="modal-head"><h3>Start a Chat</h3><p>Name your learning session — you can chat, get quizzed, and explore any topic.</p></div>
+    <div class="mf">
+      <div><label>Topic / Session name</label><input class="minp" id="chat-topic" placeholder="e.g. Quantum Physics, Python basics, WW2…"/></div>
+    </div>
+    <div class="mactions">
+      <button class="mbtn mbtn-cancel" onclick="closeModal('modal-chat')">Cancel</button>
+      <button class="mbtn mbtn-go" id="chat-btn" onclick="doChat()">Start chatting →</button>
     </div>
   </div>
 </div>

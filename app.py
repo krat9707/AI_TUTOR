@@ -10,6 +10,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+from providers import available_models, get_model, get_default, get_doc_models
 from functools import wraps
 from agent_handler import StudyAssistantHandler
 
@@ -36,6 +37,7 @@ class User(db.Model):
     password    = db.Column(db.String(256), nullable=False)
     full_name   = db.Column(db.String(120), default="")
     avatar_seed = db.Column(db.String(40),  default="")
+    pref_model_id = db.Column(db.String(40), default="groq_llama")  # active model
     created_at  = db.Column(db.DateTime,    default=datetime.utcnow)
     sessions    = db.relationship("StudySession", backref="user", lazy=True,
                                   cascade="all, delete-orphan")
@@ -64,6 +66,7 @@ class StudySession(db.Model):
     chapters_json    = db.Column(db.Text,        default="")   # YouTube chapters JSON
     video_title      = db.Column(db.String(300), default="")   # real video title from YT
     pdf_filename  = db.Column(db.String(300), default="")   # stored PDF filename
+    raw_text      = db.Column(db.Text,        default="")   # pasted text content
     content_type  = db.Column(db.String(40),  default="topic")  # topic|pdf|youtube
     # ─────────────────────────────────────────────────────────────────────────
     created_at    = db.Column(db.DateTime,    default=datetime.utcnow)
@@ -71,12 +74,14 @@ class StudySession(db.Model):
                                     cascade="all, delete-orphan")
 
 class Interaction(db.Model):
-    id         = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey("study_session.id"), nullable=False)
-    kind       = db.Column(db.String(40), default="chat")   # chat | quiz | rag | notes | summary
-    question   = db.Column(db.Text,  default="")
-    answer     = db.Column(db.Text,  default="")
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id          = db.Column(db.Integer, primary_key=True)
+    session_id  = db.Column(db.Integer, db.ForeignKey("study_session.id"), nullable=False)
+    kind        = db.Column(db.String(40), default="chat")
+    question    = db.Column(db.Text,  default="")
+    answer      = db.Column(db.Text,  default="")
+    thread_id   = db.Column(db.String(36), default="")
+    thread_name = db.Column(db.String(200), default="New Chat")
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
 
 # ── In-memory handler store ────────────────────────────────────────────────────
 _handlers: dict = {}
@@ -88,13 +93,49 @@ def set_handler(sid: str, h):
     _handlers[sid] = h
 
 def _rebuild_handler(s: StudySession) -> StudyAssistantHandler:
-    """Rebuild a handler from DB session object and store it."""
+    """Rebuild handler using the session owner's CURRENT preferred model.
+
+    The model baked into s.model / s.provider reflects what was selected at
+    session-creation time.  If the user has since switched the model toggle we
+    must respect that preference — otherwise a handler cached before the switch
+    (and subsequently evicted) would silently re-create with the old model.
+    """
+    # Resolve live preference for this session's owner
+    owner   = User.query.get(s.user_id)
+    pref_id = (owner.pref_model_id if owner else None) or "groq_llama"
+    pref    = get_model(pref_id) or get_default()
+    live_provider  = pref["provider"]
+    live_model     = pref["model"]
+    print(f"[Handler] Building with {pref_id} ({live_provider}/{live_model})", flush=True)
     h = StudyAssistantHandler(
         topic=s.topic, subject_category=s.category,
         knowledge_level=s.knowledge_lvl, learning_goal=s.learning_goal,
         time_available=s.time_avail, learning_style=s.style,
-        model_name=s.model, provider=s.provider,
+        model_name=live_model, provider=live_provider,
     )
+    # Rebuild in-memory RAG from stored text (no local model needed).
+    _rebuild_text = s.raw_text or ""
+    # Fallback for older sessions: reconstruct from transcript_json
+    if not _rebuild_text and s.transcript_json:
+        try:
+            import json as _rj
+            _tc = _rj.loads(s.transcript_json)
+            _rebuild_text = " ".join(
+                c.get("text", "") if isinstance(c, dict) else str(c)
+                for c in _tc
+            )
+        except Exception:
+            pass
+    # Always try to rebuild if we have any text for a content session
+    _is_content = s.content_type in ("youtube", "pdf", "text") or bool(s.transcript_json)
+    if _rebuild_text and _is_content:
+        try:
+            h.rag_helper = None  # always start fresh on server restart
+            h.initialize_rag(collection_name=f"session_{s.sid}")
+            h.rag_helper.load_raw(_rebuild_text)
+            print(f"[RAG] Rebuilt {h.rag_helper.count()} chunks for {s.sid} (type={s.content_type})", flush=True)
+        except Exception as e:
+            print(f"[RAG] Rebuild failed for {s.sid}: {e}", flush=True)
     set_handler(s.sid, h)
     return h
 
@@ -119,6 +160,12 @@ def current_user():
     return db.session.get(User, uid) if uid else None
 
 # ── Page routes ────────────────────────────────────────────────────────────────
+
+@app.route("/api/doc-models", methods=["GET"])
+def api_doc_models():
+    """Models suitable for document RAG (large context, strong comprehension)."""
+    return jsonify({"ok": True, "models": get_doc_models()})
+
 @app.route("/")
 def landing():
     return render_template("landing.html", user=current_user())
@@ -148,7 +195,9 @@ def dashboard():
                 .filter_by(user_id=u.id)
                 .order_by(StudySession.created_at.desc())
                 .limit(6).all())
-    return render_template("dashboard.html", user=u, sessions=sessions)
+    from providers import available_models
+    models = available_models()
+    return render_template("dashboard.html", user=u, models=models, sessions=sessions)
 
 @app.route("/session/<sid>")
 def session_view(sid):
@@ -159,7 +208,170 @@ def session_view(sid):
     messages = (Interaction.query
                 .filter_by(session_id=s.id, kind="chat")
                 .order_by(Interaction.created_at.asc()).all())
+    if s.content_type == "chat":
+        return redirect(url_for("chat_session_view", sid=sid))
+    if s.content_type == "text":
+        try:
+            return render_template("text_session.html", user=u, session=s)
+        except Exception as e:
+            import traceback
+            print(f"[text_session render error] {e}\n{traceback.format_exc()}", flush=True)
+            return render_template("session.html", user=u, session=s, messages=messages)
+    if s.content_type == "pdf":
+        pdf_url = ""
+        if s.pdf_filename:
+            original = s.pdf_filename[len(sid) + 1:]  # strip 'sid_' prefix
+            pdf_url  = url_for('serve_pdf', sid=sid, filename=original)
+        return render_template("pdf_session.html", user=u, session=s, pdf_url=pdf_url)
     return render_template("session.html", user=u, session=s, messages=messages)
+
+@app.route("/chat/<sid>")
+def chat_session_view(sid):
+    u = current_user()
+    if not u:
+        return redirect(url_for("login_page"))
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    return render_template("chat_session.html", user=u, session=s)
+
+@app.route("/api/session/<sid>/threads", methods=["GET"])
+@login_required
+def api_get_threads(sid):
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    rows = (Interaction.query
+            .filter_by(session_id=s.id)
+            .filter(Interaction.thread_id != "")
+            .order_by(Interaction.created_at.asc()).all())
+    seen = {}
+    for row in rows:
+        if row.thread_id not in seen:
+            seen[row.thread_id] = {"id": row.thread_id, "name": row.thread_name or "New Chat"}
+    return jsonify({"ok": True, "threads": list(seen.values())})
+
+@app.route("/api/session/<sid>/thread/new", methods=["POST"])
+@login_required
+def api_new_thread(sid):
+    u = current_user()
+    StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    tid = str(uuid.uuid4())
+    return jsonify({"ok": True, "thread_id": tid, "name": "New Chat"})
+
+@app.route("/api/session/<sid>/thread/<tid>/messages", methods=["GET"])
+@login_required
+def api_thread_messages(sid, tid):
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    msgs = (Interaction.query
+            .filter_by(session_id=s.id, thread_id=tid)
+            .order_by(Interaction.created_at.asc()).all())
+    out = []
+    for m in msgs:
+        if m.question:
+            out.append({"role": "user",      "content": m.question})
+        if m.answer:
+            out.append({"role": "assistant", "content": m.answer, "kind": m.kind})
+    return jsonify({"ok": True, "messages": out})
+
+@app.route("/api/session/<sid>/thread/<tid>/rename", methods=["POST"])
+@login_required
+def api_rename_thread(sid, tid):
+    u    = current_user()
+    s    = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    name = (request.get_json() or {}).get("name", "New Chat")[:120]
+    Interaction.query.filter_by(session_id=s.id, thread_id=tid).update({"thread_name": name})
+    db.session.commit()
+    return jsonify({"ok": True})
+
+@app.route("/api/session/<sid>/thread/<tid>/delete", methods=["DELETE"])
+@login_required
+def api_delete_thread(sid, tid):
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    Interaction.query.filter_by(session_id=s.id, thread_id=tid).delete()
+    db.session.commit()
+    return jsonify({"ok": True})
+
+@app.route("/api/session/<sid>/thread/<tid>/chat", methods=["POST"])
+@login_required
+def api_chat_message(sid, tid):
+    u       = current_user()
+    s       = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    h       = _get_or_rebuild(sid, s)
+    data    = request.get_json() or {}
+    message = data.get("message", "").strip()
+    history = data.get("history", [])
+    tname   = data.get("thread_name", "New Chat")
+    if not message:
+        return jsonify({"ok": False, "error": "Empty message"}), 400
+
+    # ── Safety net: ensure RAG is loaded for content sessions ─────────
+    if h.rag_helper is None or h.rag_helper.count() == 0:
+        _rag_text = s.raw_text or ""
+        if not _rag_text and s.transcript_json:
+            try:
+                import json as _cj
+                _tc = _cj.loads(s.transcript_json)
+                _rag_text = " ".join(
+                    c.get("text", "") if isinstance(c, dict) else str(c)
+                    for c in _tc
+                )
+            except Exception:
+                pass
+        if _rag_text:
+            try:
+                h.rag_helper = None
+                h.initialize_rag(collection_name=f"session_{sid}")
+                h.rag_helper.load_raw(_rag_text)
+                print(f"[Chat] Lazy-loaded {h.rag_helper.count()} RAG chunks for {sid}", flush=True)
+            except Exception as _re:
+                print(f"[Chat] RAG lazy-load failed: {_re}", flush=True)
+
+    try:
+        ctx_lines = []
+        for m in history[-6:]:
+            role = "Student" if m.get("role") == "user" else "Tutor"
+            ctx_lines.append(f"{role}: {m.get('content','')}")
+        ctx = "\n".join(ctx_lines)
+        result = h.get_tutoring(student_question=message, context=ctx)
+        inter = Interaction(session_id=s.id, kind="chat",
+                            question=message, answer=result,
+                            thread_id=tid, thread_name=tname)
+        db.session.add(inter)
+        db.session.flush()
+        count = Interaction.query.filter_by(session_id=s.id, thread_id=tid).count()
+        if count <= 1:
+            short = message[:80].strip()
+            Interaction.query.filter_by(session_id=s.id, thread_id=tid).update({"thread_name": short})
+            tname = short
+        db.session.commit()
+        return jsonify({"ok": True, "result": result, "thread_name": tname})
+    except Exception as e:
+        import traceback; print(traceback.format_exc())
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/api/session/<sid>/thread/<tid>/quiz", methods=["POST"])
+@login_required
+def api_chat_quiz(sid, tid):
+    u    = current_user()
+    s    = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    h    = _get_or_rebuild(sid, s)
+    data = request.get_json() or {}
+    hint = data.get("topic", s.topic or "the current topic")
+    n    = int(data.get("num_questions", 5))
+    diff = data.get("difficulty", "intermediate")
+    tname = data.get("thread_name", "New Chat")
+    try:
+        result = h.generate_quiz(difficulty_level=diff, focus_areas=hint, num_questions=n)
+        inter  = Interaction(session_id=s.id, kind="quiz",
+                             question=f"Quiz: {hint}", answer=result,
+                             thread_id=tid, thread_name=tname)
+        db.session.add(inter)
+        db.session.commit()
+        return jsonify({"ok": True, "result": result})
+    except Exception as e:
+        import traceback; print(traceback.format_exc())
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 @app.route("/history")
 def history():
@@ -253,6 +465,10 @@ def api_update_profile():
 def api_create_session():
     u    = current_user()
     data = request.get_json()
+    # Resolve provider + model from user preference, allow request override
+    _pref         = get_model(u.pref_model_id or "groq_llama") or get_default()
+    _req_provider = data.get("provider") or _pref["provider"]
+    _req_model    = data.get("model")    or _pref["model"]
     s    = StudySession(
         user_id       = u.id,
         topic         = data.get("topic", ""),
@@ -261,8 +477,8 @@ def api_create_session():
         learning_goal = data.get("learning_goal", ""),
         time_avail    = data.get("time_available", ""),
         style         = data.get("learning_style", ""),
-        provider      = data.get("provider", "groq"),
-        model         = data.get("model", "llama-3.3-70b-versatile"),
+        provider      = _req_provider,
+        model         = _req_model,
         content_type  = data.get("content_type", "topic"),
     )
     db.session.add(s)
@@ -297,7 +513,6 @@ def api_roadmap(sid):
     s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
     h = _get_or_rebuild(sid, s)
     try:
-        h.initialize_rag(collection_name=f"session_{sid}")
         steps = h.generate_roadmap_structured()
         import json as _json
         s.roadmap = _json.dumps(steps)
@@ -332,7 +547,6 @@ def api_quiz(sid):
     h    = _get_or_rebuild(sid, s)
     data = request.get_json()
     try:
-        h.initialize_rag(collection_name=f"session_{sid}")
         result = h.generate_quiz(
             difficulty_level=data.get("difficulty", "intermediate"),
             focus_areas="Generate all questions in English only",
@@ -370,6 +584,88 @@ def api_tutor(sid):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# ── Mistral OCR helper ─────────────────────────────────────────────────────────
+
+def _ocr_pdf_mistral(path: str) -> dict | None:
+    """
+    Call mistral-ocr-latest on a PDF file.
+    Returns the full API response dict (with pages + images) or None on failure.
+    Requires MISTRAL_API_KEY in environment.
+    """
+    import base64, httpx as _httpx
+    api_key = os.environ.get("MISTRAL_API_KEY", "").strip()
+    if not api_key:
+        print("[OCR] No MISTRAL_API_KEY — skipping OCR, will use pypdf fallback", flush=True)
+        return None
+    try:
+        with open(path, "rb") as _f:
+            pdf_b64 = base64.standard_b64encode(_f.read()).decode()
+        print(f"[OCR] Sending to mistral-ocr-latest ({round(len(pdf_b64)/1024)}KB b64)…", flush=True)
+        r = _httpx.post(
+            "https://api.mistral.ai/v1/ocr",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "mistral-ocr-latest",
+                "document": {
+                    "type": "document_url",
+                    "document_url": f"data:application/pdf;base64,{pdf_b64}"
+                },
+                "include_image_base64": True,
+            },
+            timeout=180,
+        )
+        r.raise_for_status()
+        result = r.json()
+        pages = result.get("pages", [])
+        total_imgs = sum(len(p.get("images", [])) for p in pages)
+        print(f"[OCR] Done: {len(pages)} pages, {total_imgs} images extracted", flush=True)
+        return result
+    except Exception as _e:
+        print(f"[OCR] mistral-ocr-latest failed: {_e} — falling back to pypdf", flush=True)
+        return None
+
+
+def _save_ocr_figures(sid: str, pages: list) -> int:
+    """
+    Extract base64 images from OCR pages and save as
+    uploads/{sid}_figures.json  →  [{page, id, b64, mime}]
+    Returns count of images saved.
+    """
+    figures = []
+    for page in pages:
+        pnum = page.get("index", 0) + 1
+        for img in page.get("images", []):
+            b64 = img.get("image_base64", "")
+            if not b64:
+                continue
+            # Detect mime from base64 header or default to jpeg
+            mime = "image/jpeg"
+            if b64.startswith("iVBOR"):
+                mime = "image/png"
+            elif b64.startswith("/9j/"):
+                mime = "image/jpeg"
+            elif b64.startswith("R0lGOD"):
+                mime = "image/gif"
+            figures.append({
+                "page":  pnum,
+                "id":    img.get("id", f"fig_{pnum}_{len(figures)}"),
+                "b64":   b64,
+                "mime":  mime,
+                "top_left_x":  img.get("top_left_x"),
+                "top_left_y":  img.get("top_left_y"),
+                "width":       img.get("width"),
+                "height":      img.get("height"),
+            })
+    if figures:
+        import json as _json
+        fpath = os.path.join(app.config["UPLOAD_FOLDER"], f"{sid}_figures.json")
+        with open(fpath, "w") as _f:
+            _json.dump(figures, _f)
+        print(f"[OCR] Saved {len(figures)} figures → {fpath}", flush=True)
+    return len(figures)
+
+
 # ── RAG / Document routes ──────────────────────────────────────────────────────
 @app.route("/api/session/<sid>/upload_doc", methods=["POST"])
 @login_required
@@ -393,20 +689,69 @@ def api_upload_doc(sid):
     path = os.path.join(app.config["UPLOAD_FOLDER"], save_name)
     f.save(path)
 
-    h.initialize_rag(collection_name=f"session_{sid}")
     ft = "pdf" if ext == "pdf" else "text"
-    ok = h.add_document_to_rag(path, ft)
+    s.content_type = ft
+    num_figures = 0
 
-    if ok:
-        s.content_type = ft
-        if ft == "pdf":
-            s.pdf_filename = save_name
-        db.session.commit()
+    # ── Extract text ──────────────────────────────────────────────────
+    if ft == "pdf":
+        s.pdf_filename = save_name
 
-    size = round(os.path.getsize(path) / 1024, 1)
-    return jsonify({"ok": ok, "name": name, "size": size,
-                    "type": ext, "chunks": h.get_document_count(),
-                    "pdf_filename": save_name if ft == "pdf" else ""})
+        # Primary: Mistral OCR (handles scanned PDFs, images, tables)
+        ocr_result = _ocr_pdf_mistral(path)
+        if ocr_result and ocr_result.get("pages"):
+            pages = ocr_result["pages"]
+            # Build raw_text from markdown of each page
+            s.raw_text = "\n\n".join(
+                f"[Page {p.get('index',0)+1}]\n{(p.get('markdown') or '').strip()}"
+                for p in pages if (p.get('markdown') or '').strip()
+            )
+            # Build RAG chunks page-aware (reset any existing chunks)
+            h.rag_helper = None
+            h.initialize_rag(collection_name=f"session_{sid}")
+            h.rag_helper.load_pdf_ocr(pages)
+            # Save extracted figures for the Figures tab
+            num_figures = _save_ocr_figures(sid, pages)
+        else:
+            # Fallback: pypdf
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(path)
+                s.raw_text = "\n\n".join(
+                    f"[Page {i+1}]\n{(pg.extract_text() or '').strip()}"
+                    for i, pg in enumerate(reader.pages)
+                    if (pg.extract_text() or '').strip()
+                )
+            except Exception as _e:
+                print(f"[upload_doc] pypdf fallback failed: {_e}", flush=True)
+            if s.raw_text:
+                h.rag_helper = None
+                h.initialize_rag(collection_name=f"session_{sid}")
+                h.rag_helper.load_raw(s.raw_text)
+    else:
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as _f:
+                s.raw_text = _f.read()
+        except Exception as _e:
+            print(f"[upload_doc] could not read text: {_e}", flush=True)
+        if s.raw_text:
+            h.rag_helper = None
+            h.initialize_rag(collection_name=f"session_{sid}")
+            h.rag_helper.load_raw(s.raw_text)
+
+    db.session.commit()
+
+    chunks = h.get_document_count()
+    size   = round(os.path.getsize(path) / 1024, 1)
+    return jsonify({
+        "ok":          True,
+        "name":        name,
+        "size":        size,
+        "type":        ext,
+        "chunks":      chunks,
+        "figures":     num_figures,
+        "pdf_filename": save_name if ft == "pdf" else "",
+    })
 
 @app.route("/api/session/<sid>/pdf/<filename>")
 @login_required
@@ -423,6 +768,23 @@ def serve_pdf(sid, filename):
         expected,
         mimetype="application/pdf"
     )
+
+@app.route("/api/session/<sid>/ocr_figures", methods=["GET"])
+@login_required
+def api_ocr_figures(sid):
+    """Return extracted OCR figures (base64 images) for the Figures tab."""
+    import json as _json
+    u = current_user()
+    StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    fpath = os.path.join(app.config["UPLOAD_FOLDER"], f"{sid}_figures.json")
+    if not os.path.exists(fpath):
+        return jsonify({"ok": True, "figures": []})
+    try:
+        with open(fpath) as _f:
+            figures = _json.load(_f)
+        return jsonify({"ok": True, "figures": figures})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "figures": []})
 
 @app.route("/api/session/<sid>/add_youtube", methods=["POST"])
 @login_required
@@ -532,66 +894,150 @@ def api_add_youtube(sid):
         print(f"[YT] {msg}", flush=True)
         error_log.append(msg)
 
-    # ── Strategy 2: yt-dlp with spoofed headers (avoids 429) ─────────────
+    # ── Strategy 2: yt-dlp — pull caption URLs from info dict ───────────────
     if not transcript_text:
         print("[YT] Trying yt-dlp fallback...", flush=True)
         try:
-            import yt_dlp, tempfile, os, json as _json
-            with tempfile.TemporaryDirectory() as tmpdir:
-                ydl_opts = {
-                    "skip_download": True,
-                    "writeautomaticsub": True,
-                    "writesubtitles": True,
-                    "subtitleslangs": ["en", "en-US"],
-                    "subtitlesformat": "json3",
-                    "outtmpl": os.path.join(tmpdir, "%(id)s.%(ext)s"),
-                    "quiet": True,
-                    "no_warnings": True,
-                    "socket_timeout": 20,
-                    # Spoof a real browser to avoid 429 rate limiting
-                    "http_headers": {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Accept-Language": "en-US,en;q=0.9",
-                    },
-                    "extractor_args": {"youtube": {"player_client": ["web"]}},
-                    "sleep_interval_subtitles": 1,
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(
-                        f"https://www.youtube.com/watch?v={video_id}",
-                        download=True
-                    )
-                    title = info.get("title", "")
+            import yt_dlp, re as _re, urllib.request as _ur
 
-                lines_txt = []
-                for fname in os.listdir(tmpdir):
-                    if fname.endswith(".json3"):
-                        with open(os.path.join(tmpdir, fname)) as f:
-                            sub = _json.load(f)
-                        for event in sub.get("events", []):
-                            for seg in event.get("segs", []):
+            def _pick_caption_url(caps_dict: dict):
+                """Return (url, ext) — English first, then any language."""
+                if not caps_dict:
+                    return None, None
+                for lang in ["en", "en-US", "en-GB", "en-orig"]:
+                    if lang in caps_dict:
+                        fmts = caps_dict[lang]
+                        for pref in ["json3", "vtt", "ttml", "srv3", "srv2", "srv1"]:
+                            for f in fmts:
+                                if f.get("ext") == pref:
+                                    return f["url"], pref
+                        if fmts:
+                            return fmts[0]["url"], fmts[0].get("ext", "vtt")
+                for lang in caps_dict:
+                    if lang.startswith("en"):
+                        fmts = caps_dict[lang]
+                        if fmts:
+                            return fmts[0]["url"], fmts[0].get("ext", "vtt")
+                for lang, fmts in caps_dict.items():
+                    if fmts:
+                        return fmts[0]["url"], fmts[0].get("ext", "vtt")
+                return None, None
+
+            def _parse_caption_content(content: str, ext: str) -> str:
+                import json as _j
+                if ext == "json3":
+                    try:
+                        data = _j.loads(content)
+                        parts = []
+                        for ev in data.get("events", []):
+                            for seg in ev.get("segs", []):
                                 t = seg.get("utf8", "").strip()
                                 if t and t != "\n":
-                                    lines_txt.append(t)
+                                    parts.append(t)
+                        txt = " ".join(parts)
+                        if txt.strip():
+                            return txt
+                    except Exception:
+                        pass
+                text = _re.sub(r"<[^>]+>", " ", content)
+                text = _re.sub(r"\d{2}:\d{2}[\d:.,]+\s*-->.*", "", text)
+                text = _re.sub(r"^WEBVTT.*$", "", text, flags=_re.M)
+                text = _re.sub(r"^\s*\d+\s*$", "", text, flags=_re.M)
+                text = _re.sub(r"[ \t]+", " ", text)
+                text = _re.sub(r"\n{2,}", " ", text)
+                return text.strip()
 
-                if lines_txt:
-                    transcript_text = " ".join(lines_txt)
-                    print(f"[YT] Got transcript via yt-dlp ({len(transcript_text)} chars)", flush=True)
-                    if title and s.topic in ("", "YouTube Video"):
-                        s.topic = title[:200]
-                        s.video_title = title[:300]
-                else:
-                    error_log.append("yt-dlp: no subtitle data in output")
+            def _fetch_caption(url: str, ext: str) -> str:
+                try:
+                    req = _ur.Request(url, headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                      "Chrome/124.0.0.0 Safari/537.36"
+                    })
+                    with _ur.urlopen(req, timeout=20) as resp:
+                        raw = resp.read().decode("utf-8", errors="ignore")
+                    return _parse_caption_content(raw, ext)
+                except Exception as _fe:
+                    print(f"[YT] caption fetch error: {_fe}", flush=True)
+                    return ""
 
+            base_opts = {
+                "skip_download":           True,
+                "quiet":                   True,
+                "no_warnings":             True,
+                "socket_timeout":          30,
+                "ignore_no_formats_error": True,
+                "http_headers": {
+                    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                       "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                       "Chrome/124.0.0.0 Safari/537.36",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+            }
+
+            info = None
+            for pc in [None, ["web"], ["mweb"], ["ios"], ["tv_embedded"]]:
+                try:
+                    opts = dict(base_opts)
+                    if pc:
+                        opts["extractor_args"] = {"youtube": {"player_client": pc}}
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        info = ydl.extract_info(
+                            f"https://www.youtube.com/watch?v={video_id}",
+                            download=False,
+                        )
+                    if info:
+                        subs_found = bool(info.get("subtitles") or info.get("automatic_captions"))
+                        print(f"[YT] yt-dlp info via player={pc} captions={subs_found}", flush=True)
+                        if subs_found:
+                            break
+                except Exception as _pe:
+                    print(f"[YT] player={pc} error: {_pe}", flush=True)
+
+            if not info:
+                error_log.append("yt-dlp: could not extract video info")
+                raise RuntimeError("no info")
+
+            title = info.get("title", "")
+            subs  = info.get("subtitles") or {}
+            auto  = info.get("automatic_captions") or {}
+
+            print(f"[YT] subtitles langs: {list(subs.keys())[:10]}", flush=True)
+            print(f"[YT] auto_captions langs: {list(auto.keys())[:10]}", flush=True)
+
+            caption_text = ""
+            for caps_key, caps_dict in [("subtitles", subs), ("automatic_captions", auto)]:
+                cap_url, cap_ext = _pick_caption_url(caps_dict)
+                if cap_url:
+                    caption_text = _fetch_caption(cap_url, cap_ext)
+                    if caption_text:
+                        print(f"[YT] captions via {caps_key} ({cap_ext}, "
+                              f"{len(caption_text)} chars)", flush=True)
+                        break
+
+            if caption_text:
+                transcript_text = caption_text
+                if title and s.topic in ("", "YouTube Video"):
+                    s.topic       = title[:200]
+                    s.video_title = title[:300]
+            else:
+                print(f"[YT] no captions found. subtitles={list(subs.keys())}, "
+                      f"auto={list(auto.keys())}", flush=True)
+                error_log.append(
+                    f"yt-dlp: video has no captions "
+                    f"(subtitles={list(subs.keys())[:5]}, "
+                    f"auto={list(auto.keys())[:5]})"
+                )
 
         except ImportError:
-            msg = "yt-dlp not installed — run: pip install yt-dlp"
-            print(f"[YT] {msg}", flush=True)
-            error_log.append(msg)
+            error_log.append("yt-dlp not installed — run: pip install yt-dlp")
+        except RuntimeError:
+            pass
         except Exception as e:
             msg = f"yt-dlp: {type(e).__name__}: {e}"
             print(f"[YT] {msg}", flush=True)
             error_log.append(msg)
+
 
     # ── Nothing worked ─────────────────────────────────────────────────────
     if not transcript_text:
@@ -602,21 +1048,37 @@ def api_add_youtube(sid):
             "error": f"Could not fetch transcript. Detail: {detail}"
         }), 400
 
+    # ── Persist transcript to DB NOW (before RAG) so restart always works ──
+    s.raw_text     = transcript_text
+    s.youtube_url  = url
+    s.youtube_id   = video_id
+    s.content_type = "youtube"
+    # Also store transcript_json if not already set (yt-dlp path skips this)
+    if not s.transcript_json and transcript_text:
+        import json as _j2
+        words  = transcript_text.split()
+        chunk_size = 200
+        _chunks = []
+        for i in range(0, len(words), chunk_size):
+            _chunks.append({"text": " ".join(words[i:i+chunk_size]), "start": i, "duration": 0})
+        s.transcript_json = _j2.dumps(_chunks)
+    db.session.commit()
+
     # ── Index into RAG ─────────────────────────────────────────────────────
     print("[YT] Indexing transcript into RAG...", flush=True)
+    ok = False
     try:
+        h.rag_helper = None  # force fresh RAG for new transcript
         h.initialize_rag(collection_name=f"session_{sid}")
         ok = h.rag_helper.load_text_content(
             transcript_text,
             metadata={"source": url, "video_id": video_id, "type": "youtube"}
         )
     except Exception as e:
-        return jsonify({"ok": False, "error": f"RAG indexing failed: {e}"}), 500
+        print(f"[YT] RAG indexing failed (non-fatal): {e}", flush=True)
+        ok = False
 
     if ok:
-        s.youtube_url  = url
-        s.youtube_id   = video_id
-        s.content_type = "youtube"
         # Try to grab video title from transcript API if not already set
         if not s.video_title:
             try:
@@ -740,7 +1202,6 @@ def api_summarize(sid):
     h = _get_or_rebuild(sid, s)
 
     try:
-        h.initialize_rag(collection_name=f"session_{sid}")
         result = h.summarize_content()
         s.summary = result
         inter = Interaction(session_id=s.id, kind="summary",
@@ -761,7 +1222,6 @@ def api_notes(sid):
     h = _get_or_rebuild(sid, s)
 
     try:
-        h.initialize_rag(collection_name=f"session_{sid}")
         result = h.generate_notes()
         s.notes = result
         inter = Interaction(session_id=s.id, kind="notes",
@@ -784,7 +1244,6 @@ def api_rag_query(sid):
     if not question:
         return jsonify({"error": "Question required"}), 400
     try:
-        h.initialize_rag(collection_name=f"session_{sid}")
         result = h.query_documents(question)
         inter  = Interaction(session_id=s.id, kind="rag",
                              question=question, answer=result)
@@ -883,6 +1342,83 @@ def api_user_stats():
                     "content_type": s.content_type,
                     "date": s.created_at.strftime("%b %d")} for s in recent],
     })
+
+
+@app.route("/api/session/<sid>/text_chapters", methods=["POST"])
+@login_required
+def api_text_chapters(sid):
+    """Generate AI chapters/sections from pasted text using the session handler."""
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    if not s.raw_text:
+        return jsonify({"ok": False, "error": "No text content"}), 400
+    h = _get_or_rebuild(sid, s)
+    try:
+        # Get RAG context or fall back to raw_text directly
+        ctx = h._full_context(k=15) if h.rag_helper else s.raw_text[:8000]
+        prompt = (
+            "Split the following text into logical chapters or sections. "
+            "Return ONLY a valid JSON array — no explanation, no markdown, no backticks:\n"
+            '[{"title":"Chapter title","summary":"2-3 sentence summary","start_snippet":"first 8 words of this section..."}]'
+            f"\n\nTEXT:\n{ctx}"
+        )
+        agent  = h.agents.tutor_agent()
+        result = h._run_agent(agent, prompt)
+        import re as _re, json as _j
+        m = _re.search(r'\[.*?\]', result, _re.DOTALL)
+        chapters = _j.loads(m.group(0)) if m else []
+        return jsonify({"ok": True, "chapters": chapters})
+    except Exception as e:
+        import traceback; print(traceback.format_exc())
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/api/session/<sid>/text_explain", methods=["POST"])
+@login_required
+def api_text_explain(sid):
+    """Explain a selected passage from the text."""
+    u    = current_user()
+    s    = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    h    = _get_or_rebuild(sid, s)
+    data = request.get_json() or {}
+    selection = data.get("text", "").strip()[:2000]
+    if not selection:
+        return jsonify({"ok": False, "error": "No text selected"}), 400
+    try:
+        prompt = f"Explain the following passage clearly and concisely, as if teaching a student:\n\n\"{selection}\""
+        result = h.get_tutoring(student_question=selection, context=f"Explain this passage clearly and concisely, as if teaching a student.")
+        return jsonify({"ok": True, "result": result})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/user/model", methods=["POST"])
+@login_required
+def api_set_model():
+    """Save the user's preferred model selection."""
+    u    = current_user()
+    data = request.get_json() or {}
+    mid  = data.get("model_id", "").strip()
+    m    = get_model(mid)
+    if not m:
+        return jsonify({"ok": False, "error": "Unknown model"}), 400
+    u.pref_model_id = mid
+    db.session.commit()
+
+    # Evict cached handlers for ALL this user's sessions so next call rebuilds
+    # with the newly selected model instead of the stale in-memory one.
+    user_sessions = StudySession.query.filter_by(user_id=u.id).all()
+    for us in user_sessions:
+        _handlers.pop(us.sid, None)
+    print(f"[Model] Switched to {mid} — evicted {len(user_sessions)} cached handlers", flush=True)
+
+    return jsonify({"ok": True, "model_id": mid, "label": m["label"]})
+
+@app.route("/api/user/models", methods=["GET"])
+@login_required
+def api_list_models():
+    """Return all models with availability status."""
+    return jsonify({"ok": True, "models": available_models()})
+
 
 
 # ── Init + Auto-migrate ───────────────────────────────────────────────────────

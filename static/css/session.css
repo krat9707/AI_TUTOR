@@ -189,6 +189,35 @@ body {
 .tr-empty svg { width: 28px; height: 28px; color: var(--g5); }
 .tr-empty p { font-size: 12.5px; color: var(--g4); line-height: 1.6; max-width: 200px; }
 
+/* Text reader */
+.text-reader-area {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+.text-reader-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px 10px; flex-shrink: 0;
+  border-bottom: 1px solid var(--g5);
+  gap: 8px;
+}
+.text-reader-title {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: 500; color: var(--g2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.text-reader-wc {
+  font-size: 11px; color: var(--g4); flex-shrink: 0; white-space: nowrap;
+}
+.text-reader-body {
+  flex: 1; overflow-y: auto;
+  padding: 16px 18px 24px;
+  font-size: 13px; line-height: 1.85;
+  color: var(--g2); font-weight: 300;
+  white-space: pre-wrap; word-break: break-word;
+  scrollbar-width: thin; scrollbar-color: var(--g5) transparent;
+}
+.text-reader-body::-webkit-scrollbar { width: 3px; }
+.text-reader-body::-webkit-scrollbar-thumb { background: var(--g5); border-radius: 2px; }
+
 /* PDF viewer */
 .pdf-area { flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 10px; overflow: hidden; }
 .pdf-toolbar {
