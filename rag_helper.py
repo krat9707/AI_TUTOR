@@ -31,11 +31,35 @@ import requests
 
 _EMBED_URL   = "https://api.mistral.ai/v1/embeddings"
 _EMBED_MODEL = "codestral-embed"
-_BATCH_SIZE  = 128      # doubled from 64 — fewer round-trips, still safe
-_MAX_WORKERS = 10       # concurrent API calls; stays under Mistral rate limits
-_DIM         = 1024     # codestral-embed output dimension
-_RETRY_MAX   = 4
-_RETRY_BASE  = 1.0      # seconds; doubles each attempt
+_BATCH_SIZE  = 128     # 128 chunks × 512 chars — safe per-request size
+_MAX_WORKERS = 3       # conservative: 3 concurrent requests avoids 429 bursts
+_DIM         = 1024    # codestral-embed output dimension
+_RETRY_MAX   = 8       # more retries — 429 is transient, never give up to BM25
+_RETRY_BASE  = 2.0     # base wait in seconds
+
+
+# ── Shared rate-limit gate ────────────────────────────────────────────────────
+# When any worker hits a 429, it sets _rl_until to (now + backoff).
+# All workers check this before firing and sleep until it clears.
+# This prevents the thundering-herd where all workers resume simultaneously.
+
+_rl_lock  = threading.Lock()
+_rl_until = 0.0   # epoch seconds; 0 means no active backoff
+
+
+def _rl_wait() -> None:
+    """Block until the shared rate-limit cooldown has elapsed."""
+    with _rl_lock:
+        remaining = _rl_until - time.time()
+    if remaining > 0:
+        time.sleep(remaining)
+
+
+def _rl_set(seconds: float) -> None:
+    """Set a shared cooldown. Only extends, never shortens."""
+    global _rl_until
+    with _rl_lock:
+        _rl_until = max(_rl_until, time.time() + seconds)
 
 
 # ── API helpers ───────────────────────────────────────────────────────────────
@@ -47,11 +71,14 @@ def _get_api_key() -> str:
 def _embed_batch(texts: List[str], api_key: str, batch_idx: int = 0
                  ) -> Tuple[int, Optional[np.ndarray]]:
     """
-    Embed one batch. Returns (batch_idx, array) so the caller can
-    reassemble results in order after parallel execution.
-    Returns (batch_idx, None) on unrecoverable failure.
+    Embed one batch with shared rate-limit awareness.
+    - Before each attempt: honours the global cooldown (_rl_wait)
+    - On 429: sets global cooldown so ALL workers pause together
+    - Retries up to _RETRY_MAX times before giving up
+    Returns (batch_idx, array) on success, (batch_idx, None) on hard failure.
     """
     for attempt in range(_RETRY_MAX):
+        _rl_wait()  # respect shared cooldown before firing
         try:
             r = requests.post(
                 _EMBED_URL,
@@ -63,10 +90,13 @@ def _embed_batch(texts: List[str], api_key: str, batch_idx: int = 0
                 timeout=60,
             )
             if r.status_code == 429:
-                wait = _RETRY_BASE * (2 ** attempt)
-                print(f"[Embed] batch {batch_idx} rate-limited — "
-                      f"retry in {wait:.1f}s", flush=True)
-                time.sleep(wait)
+                # Parse Retry-After header if present, else exponential backoff
+                retry_after = r.headers.get("Retry-After")
+                wait = float(retry_after) if retry_after else _RETRY_BASE * (2 ** attempt)
+                print(f"[Embed] 429 — global cooldown {wait:.1f}s "
+                      f"(batch {batch_idx}, attempt {attempt+1})", flush=True)
+                _rl_set(wait)   # tell ALL workers to pause
+                _rl_wait()      # this worker waits too
                 continue
             r.raise_for_status()
             data = sorted(r.json()["data"], key=lambda x: x["index"])
@@ -75,8 +105,12 @@ def _embed_batch(texts: List[str], api_key: str, batch_idx: int = 0
             norms = np.where(norms == 0, 1.0, norms)
             return batch_idx, vecs / norms
         except requests.RequestException as exc:
+            wait = _RETRY_BASE * (2 ** attempt)
             if attempt < _RETRY_MAX - 1:
-                time.sleep(_RETRY_BASE * (2 ** attempt))
+                print(f"[Embed] batch {batch_idx} network error "
+                      f"(attempt {attempt+1}): {exc} — retry in {wait:.1f}s",
+                      flush=True)
+                time.sleep(wait)
             else:
                 print(f"[Embed] batch {batch_idx} failed after "
                       f"{_RETRY_MAX} attempts: {exc}", flush=True)
@@ -86,9 +120,10 @@ def _embed_batch(texts: List[str], api_key: str, batch_idx: int = 0
 
 def _embed_parallel(texts: List[str], api_key: str) -> Optional[np.ndarray]:
     """
-    Embed texts using parallel workers.
-    Splits into _BATCH_SIZE batches, fires up to _MAX_WORKERS concurrently.
-    Returns (N, 1024) float32 array or None if any batch fails.
+    Embed all texts using _MAX_WORKERS parallel workers with shared
+    rate-limit coordination. Never falls back to BM25 due to 429s alone
+    — retries until _RETRY_MAX is exhausted.
+    Returns (N, 1024) float32 array, or None only on hard API failure.
     """
     if not texts:
         return np.zeros((0, _DIM), dtype=np.float32)
@@ -98,9 +133,10 @@ def _embed_parallel(texts: List[str], api_key: str) -> Optional[np.ndarray]:
         for i in range(0, len(texts), _BATCH_SIZE)
     ]
     n_batches = len(batches)
+    workers   = min(_MAX_WORKERS, n_batches)
     results: dict = {}
 
-    with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, n_batches)) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(_embed_batch, batch, api_key, idx): idx
             for idx, batch in batches
@@ -108,13 +144,11 @@ def _embed_parallel(texts: List[str], api_key: str) -> Optional[np.ndarray]:
         for future in as_completed(futures):
             idx, vecs = future.result()
             if vecs is None:
-                # Cancel remaining futures and abort
                 for f in futures:
                     f.cancel()
                 return None
             results[idx] = vecs
 
-    # Reassemble in order
     return np.concatenate([results[i] for i in range(n_batches)], axis=0)
 
 
