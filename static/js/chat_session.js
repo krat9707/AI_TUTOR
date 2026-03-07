@@ -28,6 +28,20 @@ window.addEventListener('DOMContentLoaded', async ()=>{
 
   await loadThreads();
 
+  // Auto-send first message if passed from dashboard chat bar
+  const _firstMsg = new URLSearchParams(location.search).get('first');
+  if (_firstMsg && _firstMsg.trim()) {
+    history.replaceState(null, '', location.pathname);
+    setTimeout(() => {
+      const inp = document.getElementById('chat-input');
+      if (inp && currentThread) {
+        inp.value = _firstMsg.trim();
+        inp.dispatchEvent(new Event('input'));
+        sendMessage();
+      }
+    }, 500);
+  }
+
   let _ld;
   const obs=new MutationObserver(muts=>{
     const hasNew=muts.some(m=>Array.from(m.addedNodes).some(n=>n.dataset?.lucide||n.querySelector?.('[data-lucide]')));
