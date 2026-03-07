@@ -1,26 +1,22 @@
-# ── Web framework ──────────────────────────────────────────────────────────
 flask>=3.0.0
 werkzeug>=3.0.0
 
-# ── AI providers ───────────────────────────────────────────────────────────
 openai>=1.30.0
 groq>=0.9.0
 httpx>=0.27.0
 
-# ── Multi-agent orchestration ──────────────────────────────────────────────
 agno>=1.0.0
 
-# ── PDF parsing (lightweight — no local model download) ────────────────────
 pypdf>=4.0.0
 
-# ── YouTube ────────────────────────────────────────────────────────────────
 youtube-transcript-api>=0.6.2
 yt-dlp>=2024.1.0
 
-# ── Web search tool ────────────────────────────────────────────────────────
 duckduckgo-search>=6.0.0
 
-# ── Utilities ──────────────────────────────────────────────────────────────
 python-dotenv>=1.0.0
 pyyaml>=6.0.0
 requests>=2.31.0
+
+flask-sqlalchemy>=3.1.1
+numpy>=2.4.2
