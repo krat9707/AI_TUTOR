@@ -8,6 +8,8 @@
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/CustomEase.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 </head>
 <body>
 
@@ -39,43 +41,48 @@
     <button class="tb-btn" onclick="toast('Share coming soon')"><i data-lucide="share-2"></i></button>
   </header>
 
-  <!-- LEFT — PDF / TEXT READER -->
+  <!-- LEFT — PDF.js Viewer / OCR View -->
   <main class="panel-left">
     <div class="reader-header">
       <span class="reader-title">{{ session.topic or 'PDF Document' }}</span>
+
       <div class="view-toggle" id="view-toggle">
         <button class="vtbtn active" id="vt-pdf" onclick="switchView('pdf')">
           <i data-lucide="file-text"></i> PDF
         </button>
-        <button class="vtbtn" id="vt-text" onclick="switchView('text')">
-          <i data-lucide="align-left"></i> Text
+        <button class="vtbtn" id="vt-ocr" onclick="switchView('ocr')">
+          <i data-lucide="layout-list"></i> OCR
         </button>
       </div>
+
+      <div class="pdf-controls" id="pdf-controls">
+        <button class="pctrl-btn" onclick="prevPage()" title="Previous"><i data-lucide="chevron-up"></i></button>
+        <span class="page-info"><span id="current-page">—</span>&nbsp;/&nbsp;<span id="total-pages">—</span></span>
+        <button class="pctrl-btn" onclick="nextPage()" title="Next"><i data-lucide="chevron-down"></i></button>
+        <div class="pctrl-sep"></div>
+        <button class="pctrl-btn" onclick="zoomOut()" title="Zoom out"><i data-lucide="minus"></i></button>
+        <span class="zoom-label" id="zoom-label">100%</span>
+        <button class="pctrl-btn" onclick="zoomIn()" title="Zoom in"><i data-lucide="plus"></i></button>
+      </div>
+
       <span class="reader-meta" id="reader-meta"></span>
     </div>
 
-    <!-- PDF Viewer -->
-    <div class="pdf-viewer-wrap" id="pdf-viewer-wrap">
-      {% if pdf_url %}
-        <iframe id="pdf-frame" src="{{ pdf_url }}#toolbar=1&navpanes=1&scrollbar=1"
-                title="PDF Viewer" allowfullscreen></iframe>
-      {% else %}
-        <div class="pdf-unavailable">
-          <i data-lucide="file-x"></i>
-          <p>PDF file not available.</p>
-          <button class="vtbtn" onclick="switchView('text')">View extracted text instead</button>
-        </div>
+    <div class="pdf-container" id="pdf-container">
+      {% if not pdf_url %}
+      <div class="pdf-unavailable">
+        <i data-lucide="file-x"></i>
+        <p>PDF file not available.</p>
+        <button class="vtbtn" onclick="switchView('ocr')">View OCR output instead</button>
+      </div>
       {% endif %}
     </div>
 
-    <!-- Text View (hidden by default) -->
-    <div class="reader-body" id="reader-body" style="display:none">{{ session.raw_text or '' }}</div>
+    <div class="ocr-view" id="ocr-view" style="display:none"></div>
   </main>
 
-  <!-- RIGHT PANEL — identical to text_session -->
+  <!-- RIGHT PANEL -->
   <aside class="panel-right">
-
-    <!-- Tab bar -->
     <nav class="rp-nav" id="rp-nav">
       <div id="rp-slider"></div>
       <button class="rp-tab active" id="tab-learn" data-tab="learn" onclick="switchTab('learn')">
@@ -89,7 +96,6 @@
       </button>
     </nav>
 
-    <!-- Panels -->
     <div class="rp-panels" id="rp-panels">
 
       <!-- LEARN -->
@@ -168,7 +174,7 @@
               <button class="ntb" onclick="applyNote('h2')">H2</button>
               <button class="ntb" onclick="applyNote('bullet')">•</button>
             </div>
-            <textarea class="notes-ta" id="notes-ta" placeholder="Type notes here, or switch to Text view → highlight → Add to notes…">{{ session.notes or '' }}</textarea>
+            <textarea class="notes-ta" id="notes-ta" placeholder="Type notes here, or select text in the PDF and click Add to Notes…">{{ session.notes or '' }}</textarea>
           </div>
           <button class="save-btn" onclick="saveNotes()">
             <i data-lucide="save"></i> Save Notes
@@ -202,6 +208,28 @@
         </div>
       </div>
 
+      <!-- CHAT -->
+      <div class="rp-panel" id="panel-chat" style="display:none">
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-empty" id="chat-empty">
+            <i data-lucide="message-circle" style="width:28px;height:28px;color:var(--g5)"></i>
+            <div>Ask anything about this document</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- CHAT BAR — always pinned to bottom -->
+    <div class="rp-chat-bar" id="rp-chat-bar">
+      <textarea class="rp-chat-input" id="rp-chat-input"
+                placeholder="Ask about this document…"
+                rows="1"
+                onkeydown="chatInputKeydown(event)"
+                oninput="autoResizeChat(this)"></textarea>
+      <button class="rp-chat-send" id="rp-chat-send" onclick="sendChatMessage()">
+        <i data-lucide="send"></i>
+      </button>
     </div>
 
     <!-- ANNOTATIONS DRAWER -->
@@ -214,7 +242,7 @@
         <div id="ann-empty" class="ann-empty">
           <i data-lucide="highlighter"></i>
           <div>No annotations yet</div>
-          <div style="font-size:11.5px;color:var(--g4);margin-top:2px">Switch to Text view → select text → Highlight</div>
+          <div style="font-size:11.5px;color:var(--g4);margin-top:2px">Select text in the PDF and click Highlight</div>
         </div>
         <div id="ann-list"></div>
       </div>
@@ -223,17 +251,17 @@
   </aside>
 </div>
 
-<!-- SELECTION TOOLBAR (only active in text view) -->
+<!-- SELECTION TOOLBAR -->
 <div class="sel-toolbar" id="sel-toolbar">
   <button class="sel-btn" onmousedown="event.preventDefault()" onclick="selExplain()"><i data-lucide="lightbulb"></i> Explain</button>
-  <button class="sel-btn" onmousedown="event.preventDefault()" onclick="selChat()"><i data-lucide="message-circle"></i> Chat</button>
+  <button class="sel-btn" onmousedown="event.preventDefault()" onclick="selChatWith()"><i data-lucide="message-circle"></i> Chat</button>
   <button class="sel-btn" onmousedown="event.preventDefault()" onclick="selAddToNotes()"><i data-lucide="notebook-pen"></i> Add to notes</button>
   <div class="sel-sep"></div>
   <div class="color-dots">
     <div class="cdot" style="background:#ffd600" onmousedown="event.preventDefault()" onclick="selHighlight('yellow')" title="Yellow"></div>
     <div class="cdot" style="background:#1a6eff" onmousedown="event.preventDefault()" onclick="selHighlight('blue')"   title="Blue"></div>
     <div class="cdot" style="background:#10b981" onmousedown="event.preventDefault()" onclick="selHighlight('green')"  title="Green"></div>
-    <div class="cdot" style="background:#e53935" onmousedown="event.preventDefault()" onclick="selHighlight('pink')"   title="Red"></div>
+    <div class="cdot" style="background:#e53935" onmousedown="event.preventDefault()" onclick="selHighlight('red')"    title="Red"></div>
   </div>
 </div>
 
@@ -305,12 +333,13 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
 <script src="{{ url_for('static', filename='js/pdf_session.js') }}"></script>
 <script>
-  const SESSION_ID    = "{{ session.sid }}";
-  const SESSION_TOPIC = {{ session.topic | tojson }};
-  const SESSION_PDF_URL = {{ pdf_url | tojson }};
-  const HAS_RAW_TEXT  = {{ 'true' if session.raw_text else 'false' }};
+  const SESSION_ID       = "{{ session.sid }}";
+  const SESSION_TOPIC    = {{ session.topic | tojson }};
+  const SESSION_PDF_URL  = {{ pdf_url | tojson }};
+  const SESSION_RAW_TEXT = {{ (session.raw_text or '') | tojson }};
 </script>
 </body>
 </html>

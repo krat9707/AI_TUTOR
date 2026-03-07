@@ -68,7 +68,8 @@ class StudySession(db.Model):
     pdf_filename  = db.Column(db.String(300), default="")   # stored PDF filename
     raw_text      = db.Column(db.Text,        default="")   # pasted text content
     content_type  = db.Column(db.String(40),  default="topic")  # topic|pdf|youtube
-    embed_key     = db.Column(db.String(64),  default="")   # sha256 of source bytes (stable cache key)
+    embed_key         = db.Column(db.String(64),  default="")   # sha256 of source bytes (stable cache key)
+    annotations_json  = db.Column(db.Text, default="[]")  # PDF highlight annotations JSON
     # ─────────────────────────────────────────────────────────────────────────
     created_at    = db.Column(db.DateTime,    default=datetime.utcnow)
     interactions  = db.relationship("Interaction", backref="study_session", lazy=True,
@@ -1381,6 +1382,29 @@ def api_delete_session(sid):
     db.session.delete(s)
     db.session.commit()
     _handlers.pop(sid, None)
+    return jsonify({"ok": True})
+
+@app.route("/api/session/<sid>/annotations", methods=["GET"])
+@login_required
+def api_get_annotations(sid):
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    try:
+        import json as _j
+        anns = _j.loads(s.annotations_json or "[]")
+    except Exception:
+        anns = []
+    return jsonify({"ok": True, "annotations": anns})
+
+@app.route("/api/session/<sid>/annotations", methods=["POST"])
+@login_required
+def api_save_annotations(sid):
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    data = request.get_json() or {}
+    import json as _j
+    s.annotations_json = _j.dumps(data.get("annotations", []))
+    db.session.commit()
     return jsonify({"ok": True})
 
 @app.route("/api/session/<sid>/data", methods=["GET"])
