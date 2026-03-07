@@ -68,6 +68,7 @@ class StudySession(db.Model):
     pdf_filename  = db.Column(db.String(300), default="")   # stored PDF filename
     raw_text      = db.Column(db.Text,        default="")   # pasted text content
     content_type  = db.Column(db.String(40),  default="topic")  # topic|pdf|youtube
+    embed_key     = db.Column(db.String(64),  default="")   # sha256 of source bytes (stable cache key)
     # ─────────────────────────────────────────────────────────────────────────
     created_at    = db.Column(db.DateTime,    default=datetime.utcnow)
     interactions  = db.relationship("Interaction", backref="study_session", lazy=True,
@@ -136,7 +137,12 @@ def _rebuild_handler(s: StudySession) -> StudyAssistantHandler:
                 sid=s.sid,
                 cache_dir=app.config["UPLOAD_FOLDER"],
             )
-            h.rag_helper.load_from_cache_or_raw(_rebuild_text)
+            # Use stored embed_key (hash of source bytes) for stable cache hit;
+            # fall back to hashing raw_text for sessions created before this column
+            h.rag_helper.load_from_cache_or_raw(
+                _rebuild_text,
+                source_key=s.embed_key or ""
+            )
             print(f"[RAG] Rebuilt {h.rag_helper.count()} chunks for {s.sid} (type={s.content_type})", flush=True)
         except Exception as e:
             print(f"[RAG] Rebuild failed for {s.sid}: {e}", flush=True)
@@ -329,7 +335,8 @@ def api_chat_message(sid, tid):
                     sid=sid,
                     cache_dir=app.config["UPLOAD_FOLDER"],
                 )
-                h.rag_helper.load_from_cache_or_raw(_rag_text)
+                h.rag_helper.load_from_cache_or_raw(_rag_text,
+                    source_key=s.embed_key or "")
                 print(f"[Chat] Lazy-loaded {h.rag_helper.count()} RAG chunks for {sid}", flush=True)
             except Exception as _re:
                 print(f"[Chat] RAG lazy-load failed: {_re}", flush=True)
@@ -705,46 +712,85 @@ def api_upload_doc(sid):
     if ft == "pdf":
         s.pdf_filename = save_name
 
-        # Primary: Mistral OCR (handles scanned PDFs, images, tables)
-        ocr_result = _ocr_pdf_mistral(path)
-        if ocr_result and ocr_result.get("pages"):
-            pages = ocr_result["pages"]
-            # Build raw_text from markdown of each page
-            s.raw_text = "\n\n".join(
-                f"[Page {p.get('index',0)+1}]\n{(p.get('markdown') or '').strip()}"
-                for p in pages if (p.get('markdown') or '').strip()
-            )
-            # Build RAG chunks page-aware (reset any existing chunks)
-            from rag_helper import RAGHelper
+        # Hash file bytes — stable cache key regardless of OCR non-determinism
+        import hashlib as _hl
+        with open(path, "rb") as _pf:
+            s.embed_key = _hl.sha256(_pf.read()).hexdigest()[:16]
+
+        # ── Cache check BEFORE OCR ─────────────────────────────────────
+        # If this exact file was embedded before, skip OCR + embed entirely
+        from rag_helper import RAGHelper, _cache_path, _load_cache
+        _cache_file = _cache_path(app.config["UPLOAD_FOLDER"], s.embed_key)
+        _cached_chunks, _cached_emb = _load_cache(
+            _cache_file, s.embed_key,
+            cache_dir=app.config["UPLOAD_FOLDER"]
+        )
+        if _cached_chunks is not None and _cached_emb is not None:
+            print(f"[upload_doc] Cache hit for {s.embed_key} — "
+                  f"skipping OCR+embed ({len(_cached_chunks)} chunks)", flush=True)
             h.rag_helper = RAGHelper(
                 collection_name=f"session_{sid}",
                 sid=sid,
                 cache_dir=app.config["UPLOAD_FOLDER"],
             )
-            h.rag_helper.load_pdf_ocr(pages, raw_text=s.raw_text)
-            # Save extracted figures for the Figures tab
-            num_figures = _save_ocr_figures(sid, pages)
+            h.rag_helper.chunks           = _cached_chunks
+            h.rag_helper.embeddings       = _cached_emb
+            h.rag_helper._last_cache_file = _cache_file
+            # raw_text may already be in DB from a prior session with same file;
+            # if not, we still need it for summarise/notes/quiz — run pypdf as
+            # a lightweight fallback (no API call, just text extraction)
+            if not s.raw_text:
+                try:
+                    from pypdf import PdfReader
+                    reader = PdfReader(path)
+                    s.raw_text = "\n\n".join(
+                        f"[Page {i+1}]\n{(pg.extract_text() or '').strip()}"
+                        for i, pg in enumerate(reader.pages)
+                        if (pg.extract_text() or '').strip()
+                    )
+                except Exception as _pe:
+                    print(f"[upload_doc] pypdf for raw_text failed: {_pe}", flush=True)
         else:
-            # Fallback: pypdf
-            try:
-                from pypdf import PdfReader
-                reader = PdfReader(path)
+            # ── Cache miss: run OCR → embed → save ────────────────────
+            # Primary: Mistral OCR (handles scanned PDFs, images, tables)
+            ocr_result = _ocr_pdf_mistral(path)
+            if ocr_result and ocr_result.get("pages"):
+                pages = ocr_result["pages"]
                 s.raw_text = "\n\n".join(
-                    f"[Page {i+1}]\n{(pg.extract_text() or '').strip()}"
-                    for i, pg in enumerate(reader.pages)
-                    if (pg.extract_text() or '').strip()
+                    f"[Page {p.get('index',0)+1}]\n{(p.get('markdown') or '').strip()}"
+                    for p in pages if (p.get('markdown') or '').strip()
                 )
-            except Exception as _e:
-                print(f"[upload_doc] pypdf fallback failed: {_e}", flush=True)
-            if s.raw_text:
-                from rag_helper import RAGHelper
                 h.rag_helper = RAGHelper(
                     collection_name=f"session_{sid}",
                     sid=sid,
                     cache_dir=app.config["UPLOAD_FOLDER"],
                 )
-                h.rag_helper.load_raw(s.raw_text)
+                h.rag_helper.load_pdf_ocr(pages, raw_text=s.raw_text,
+                                          source_key=s.embed_key)
+                num_figures = _save_ocr_figures(sid, pages)
+            else:
+                # Fallback: pypdf
+                try:
+                    from pypdf import PdfReader
+                    reader = PdfReader(path)
+                    s.raw_text = "\n\n".join(
+                        f"[Page {i+1}]\n{(pg.extract_text() or '').strip()}"
+                        for i, pg in enumerate(reader.pages)
+                        if (pg.extract_text() or '').strip()
+                    )
+                except Exception as _e:
+                    print(f"[upload_doc] pypdf fallback failed: {_e}", flush=True)
+                if s.raw_text:
+                    h.rag_helper = RAGHelper(
+                        collection_name=f"session_{sid}",
+                        sid=sid,
+                        cache_dir=app.config["UPLOAD_FOLDER"],
+                    )
+                    h.rag_helper.load_raw(s.raw_text, source_key=s.embed_key)
     else:
+        import hashlib as _hl2
+        with open(path, "rb") as _tf:
+            s.embed_key = _hl2.sha256(_tf.read()).hexdigest()[:16]
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as _f:
                 s.raw_text = _f.read()
@@ -757,7 +803,7 @@ def api_upload_doc(sid):
                 sid=sid,
                 cache_dir=app.config["UPLOAD_FOLDER"],
             )
-            h.rag_helper.load_raw(s.raw_text)
+            h.rag_helper.load_raw(s.raw_text, source_key=s.embed_key)
 
     db.session.commit()
 
@@ -1073,6 +1119,9 @@ def api_add_youtube(sid):
     s.youtube_url  = url
     s.youtube_id   = video_id
     s.content_type = "youtube"
+    # video_id is deterministic — same video always hits same cache entry
+    import hashlib as _yl
+    s.embed_key = _yl.sha256(video_id.encode()).hexdigest()[:16]
     # Also store transcript_json if not already set (yt-dlp path skips this)
     if not s.transcript_json and transcript_text:
         import json as _j2
@@ -1096,7 +1145,8 @@ def api_add_youtube(sid):
         )
         ok = h.rag_helper.load_text_content(
             transcript_text,
-            metadata={"source": url, "video_id": video_id, "type": "youtube"}
+            metadata={"source": url, "video_id": video_id, "type": "youtube"},
+            source_key=s.embed_key,
         )
     except Exception as e:
         print(f"[YT] RAG indexing failed (non-fatal): {e}", flush=True)
@@ -1325,11 +1375,9 @@ def api_delete_session(sid):
         if os.path.exists(path):
             os.remove(path)
 
-    # Delete embedding cache
-    import os as _os
-    _cache = _os.path.join(app.config["UPLOAD_FOLDER"], f"{sid}.npz")
-    if _os.path.exists(_cache):
-        _os.remove(_cache)
+    # Note: embedding cache (embed_<hash>.npz) is NOT deleted here —
+    # it is content-addressed so other sessions may share it.
+    # RAGHelper.clear() deletes it only when explicitly clearing a session.
     db.session.delete(s)
     db.session.commit()
     _handlers.pop(sid, None)

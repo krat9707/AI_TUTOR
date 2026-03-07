@@ -17,6 +17,7 @@ import os
 import re
 import math
 import time
+import json
 import hashlib
 import threading
 from collections import Counter
@@ -37,6 +38,11 @@ _DIM         = 1024    # codestral-embed output dimension
 _RETRY_MAX   = 8       # more retries — 429 is transient, never give up to BM25
 _RETRY_BASE  = 2.0     # base wait in seconds
 
+
+# ── Cache size limit ─────────────────────────────────────────────────────────
+# Default 200 MB. Override this at runtime from user profile settings:
+#   import rag_helper; rag_helper._CACHE_MAX_BYTES = user.cache_limit_bytes
+_CACHE_MAX_BYTES: int = 200 * 1024 * 1024   # 200 MB
 
 # ── Shared rate-limit gate ────────────────────────────────────────────────────
 # When any worker hits a 429, it sets _rl_until to (now + backoff).
@@ -165,17 +171,143 @@ def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()[:16]
 
 
-def _cache_path(cache_dir: str, sid: str) -> str:
-    return os.path.join(cache_dir, f"{sid}.npz")
+def _cache_path(cache_dir: str, text_hash: str) -> str:
+    """Cache file named by content hash — same content hits always, any session."""
+    return os.path.join(cache_dir, f"embed_{text_hash}.npz")
 
 
-def _save_cache(path: str, chunks: List[str],
-                embeddings: np.ndarray, text_hash: str) -> None:
-    """Save chunks + embeddings + hash to a .npz file."""
+def _index_path(cache_dir: str) -> str:
+    return os.path.join(cache_dir, "cache_index.json")
+
+
+# ── LRU index ─────────────────────────────────────────────────────────────────
+# cache_index.json  →  { text_hash: { "path": str, "size": int, "last_used": float } }
+# - Written on every save and every cache hit
+# - Used for LRU eviction when cache exceeds _CACHE_MAX_BYTES
+
+_idx_lock = threading.Lock()   # protects concurrent index reads/writes
+
+
+def _read_index(cache_dir: str) -> dict:
+    path = _index_path(cache_dir)
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        # numpy can't store a list of strings directly as a structured array;
-        # store as object array
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _write_index(cache_dir: str, index: dict) -> None:
+    try:
+        with open(_index_path(cache_dir), "w") as f:
+            json.dump(index, f)
+    except Exception as e:
+        print(f"[Cache] Index write failed: {e}", flush=True)
+
+
+def _touch_index(cache_dir: str, text_hash: str, path: str, size: int) -> None:
+    """Record or update a cache entry's last-used timestamp."""
+    with _idx_lock:
+        index = _read_index(cache_dir)
+        index[text_hash] = {
+            "path":      path,
+            "size":      size,
+            "last_used": time.time(),
+        }
+        _write_index(cache_dir, index)
+
+
+def _remove_from_index(cache_dir: str, text_hash: str) -> None:
+    with _idx_lock:
+        index = _read_index(cache_dir)
+        index.pop(text_hash, None)
+        _write_index(cache_dir, index)
+
+
+def _cache_total_bytes(cache_dir: str, index: dict) -> int:
+    """Sum of sizes of all tracked cache files that still exist on disk."""
+    total = 0
+    for entry in index.values():
+        p = entry.get("path", "")
+        if os.path.exists(p):
+            total += entry.get("size", 0)
+    return total
+
+
+def _evict_lru(cache_dir: str, needed_bytes: int,
+               max_bytes: int) -> None:
+    """
+    Delete LRU cache files until (total + needed_bytes) fits within max_bytes.
+    If even a full wipe isn't enough (single file > limit), wipes everything.
+    """
+    with _idx_lock:
+        index = _read_index(cache_dir)
+        total = _cache_total_bytes(cache_dir, index)
+
+        if total + needed_bytes <= max_bytes:
+            return  # nothing to do
+
+        print(f"[Cache] Over limit: {(total+needed_bytes)/1024/1024:.1f} MB / "
+              f"{max_bytes/1024/1024:.0f} MB — evicting LRU entries", flush=True)
+
+        # Sort by last_used ascending (oldest first)
+        lru_order = sorted(
+            index.items(),
+            key=lambda kv: kv[1].get("last_used", 0),
+        )
+
+        freed = 0
+        for h, entry in lru_order:
+            if total + needed_bytes - freed <= max_bytes:
+                break
+            p = entry.get("path", "")
+            sz = entry.get("size", 0)
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+                    freed += sz
+                    print(f"[Cache] Evicted {p} ({sz/1024/1024:.1f} MB)", flush=True)
+            except Exception as e:
+                print(f"[Cache] Eviction error {p}: {e}", flush=True)
+            del index[h]
+
+        # If still over limit (e.g. single incoming file > max), wipe all
+        if total + needed_bytes - freed > max_bytes:
+            print("[Cache] Still over limit after LRU — wiping entire cache",
+                  flush=True)
+            for h, entry in list(index.items()):
+                p = entry.get("path", "")
+                try:
+                    if os.path.exists(p):
+                        os.remove(p)
+                except Exception:
+                    pass
+            index = {}
+
+        _write_index(cache_dir, index)
+
+
+# ── Core cache I/O ────────────────────────────────────────────────────────────
+
+def _save_cache(path: str, chunks: List[str], embeddings: np.ndarray,
+                text_hash: str, cache_dir: str = "",
+                max_bytes: int = 0) -> None:
+    """
+    Save embeddings to disk with LRU eviction if needed.
+    max_bytes defaults to the module-level _CACHE_MAX_BYTES.
+    """
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+
+        # Estimate size: float32 = 4 bytes
+        estimated = embeddings.nbytes + sum(len(c.encode()) for c in chunks) + 4096
+
+        limit = max_bytes if max_bytes > 0 else _CACHE_MAX_BYTES
+        if cache_dir:
+            _evict_lru(cache_dir, estimated, limit)
+
         chunks_arr = np.empty(len(chunks), dtype=object)
         for i, c in enumerate(chunks):
             chunks_arr[i] = c
@@ -185,16 +317,21 @@ def _save_cache(path: str, chunks: List[str],
             chunks=chunks_arr,
             text_hash=np.array([text_hash]),
         )
-        mb = os.path.getsize(path) / 1024 / 1024
+        actual_size = os.path.getsize(path)
+        mb = actual_size / 1024 / 1024
         print(f"[Cache] Saved {path} ({mb:.1f} MB)", flush=True)
+
+        if cache_dir:
+            _touch_index(cache_dir, text_hash, path, actual_size)
+
     except Exception as e:
         print(f"[Cache] Save failed: {e}", flush=True)
 
 
-def _load_cache(path: str, expected_hash: str
+def _load_cache(path: str, expected_hash: str, cache_dir: str = ""
                 ) -> Tuple[Optional[List[str]], Optional[np.ndarray]]:
     """
-    Load cache if it exists and hash matches.
+    Load cache, verify hash, update LRU timestamp on hit.
     Returns (chunks, embeddings) or (None, None) on miss/mismatch.
     """
     if not os.path.exists(path):
@@ -203,28 +340,41 @@ def _load_cache(path: str, expected_hash: str
         data        = np.load(path, allow_pickle=True)
         stored_hash = str(data["text_hash"][0])
         if stored_hash != expected_hash:
-            print(f"[Cache] Hash mismatch — stale cache, re-embedding", flush=True)
+            print(f"[Cache] Hash mismatch — stale, removing", flush=True)
             os.remove(path)
+            if cache_dir:
+                _remove_from_index(cache_dir, expected_hash)
             return None, None
         chunks     = list(data["chunks"])
         embeddings = data["embeddings"].astype(np.float32)
-        mb = os.path.getsize(path) / 1024 / 1024
-        print(f"[Cache] Hit {path} — {len(chunks)} chunks ({mb:.1f} MB)", flush=True)
+        size       = os.path.getsize(path)
+        mb         = size / 1024 / 1024
+        print(f"[Cache] Hit — {len(chunks)} chunks ({mb:.1f} MB)", flush=True)
+
+        # Update LRU timestamp
+        if cache_dir:
+            _touch_index(cache_dir, expected_hash, path, size)
+
         return chunks, embeddings
     except Exception as e:
         print(f"[Cache] Load failed: {e} — re-embedding", flush=True)
         try:
             os.remove(path)
+            if cache_dir:
+                _remove_from_index(cache_dir, expected_hash)
         except Exception:
             pass
         return None, None
 
 
-def _delete_cache(path: str) -> None:
+def _delete_cache(path: str, cache_dir: str = "",
+                  text_hash: str = "") -> None:
     try:
         if os.path.exists(path):
             os.remove(path)
             print(f"[Cache] Deleted {path}", flush=True)
+        if cache_dir and text_hash:
+            _remove_from_index(cache_dir, text_hash)
     except Exception as e:
         print(f"[Cache] Delete failed: {e}", flush=True)
 
@@ -275,9 +425,10 @@ class RAGHelper:
         self.collection_name = collection_name
         self.sid             = sid        # session id — used as cache filename
         self.cache_dir       = cache_dir  # directory to store .npz files
-        self.chunks     : List[str]            = []
-        self.embeddings : Optional[np.ndarray] = None   # (N, 1024)
-        self._semantic  : bool                 = bool(_get_api_key())
+        self.chunks            : List[str]            = []
+        self.embeddings        : Optional[np.ndarray] = None   # (N, 1024)
+        self._semantic         : bool                 = bool(_get_api_key())
+        self._last_cache_file  : Optional[str]        = None   # set after save
         if self._semantic:
             print("[RAGHelper] Mode: semantic (codestral-embed + parallel + cache)",
                   flush=True)
@@ -310,14 +461,15 @@ class RAGHelper:
 
     # ── Cache path ────────────────────────────────────────────────────────
 
-    def _cache_file(self) -> Optional[str]:
-        if self.sid and self.cache_dir:
-            return _cache_path(self.cache_dir, self.sid)
+    def _cache_file_for(self, text_hash: str) -> Optional[str]:
+        """Return cache path for a given content hash, or None if cache disabled."""
+        if self.cache_dir and text_hash:
+            return _cache_path(self.cache_dir, text_hash)
         return None
 
     # ── Index builder ─────────────────────────────────────────────────────
 
-    def _build_index(self, raw_text_for_hash: str = "") -> None:
+    def _build_index(self, raw_text_for_hash: str = "", source_key: str = "") -> None:
         """
         Build semantic index with parallel embedding + disk cache.
         1. Check cache (keyed by sid + hash of raw text)
@@ -333,20 +485,27 @@ class RAGHelper:
             self.embeddings = None
             return
 
-        text_hash  = _text_hash(raw_text_for_hash) if raw_text_for_hash else ""
-        cache_file = self._cache_file()
+        # source_key (hash of file bytes) takes priority over hashing raw_text —
+        # same bytes = same key even if OCR/extraction produces slightly different text
+        text_hash  = source_key if source_key else \
+                     (_text_hash(raw_text_for_hash) if raw_text_for_hash else "")
+        cache_file = self._cache_file_for(text_hash)
 
         # ── Try cache first ────────────────────────────────────────────────
         if cache_file and text_hash:
-            cached_chunks, cached_emb = _load_cache(cache_file, text_hash)
+            cached_chunks, cached_emb = _load_cache(cache_file, text_hash,
+                                                     cache_dir=self.cache_dir or "")
+            # _load_cache already verified the hash — if it returned data, use it.
+            # Crucially: replace self.chunks with cached version.
+            # OCR is non-deterministic so new chunk count may differ, but the
+            # cached chunks+embeddings are internally consistent and correct.
             if cached_chunks is not None and cached_emb is not None:
-                # Validate shape matches current chunks
-                if len(cached_chunks) == len(self.chunks) and \
-                   cached_emb.shape == (len(self.chunks), _DIM):
-                    self.embeddings = cached_emb
-                    return
-                else:
-                    print("[Cache] Shape mismatch — re-embedding", flush=True)
+                self.chunks           = cached_chunks
+                self.embeddings       = cached_emb
+                self._last_cache_file = cache_file
+                print(f"[RAGHelper] Cache hit: {len(self.chunks)} chunks"
+                      f" (source_key={text_hash})", flush=True)
+                return
 
         # ── Cache miss: embed in parallel ──────────────────────────────────
         n = len(self.chunks)
@@ -371,27 +530,28 @@ class RAGHelper:
 
         # ── Save to cache ──────────────────────────────────────────────────
         if cache_file and text_hash:
-            _save_cache(cache_file, self.chunks, vecs, text_hash)
+            _save_cache(cache_file, self.chunks, vecs, text_hash,
+                        cache_dir=self.cache_dir or "",
+                        max_bytes=_CACHE_MAX_BYTES)
+            self._last_cache_file = cache_file   # remember for clear()
 
-    def _ingest(self, chunks: List[str], raw_text: str = "") -> None:
+    def _ingest(self, chunks: List[str], raw_text: str = "", source_key: str = "") -> None:
         """
-        Store chunks, delete stale cache, build fresh index.
-        raw_text is used for cache key hashing.
+        Store chunks, build fresh index.
+        raw_text is hashed to derive the cache filename.
+        Old cache for THIS content is NOT deleted here — we only delete
+        when the session is explicitly cleared/deleted.
+        (Different sessions sharing the same PDF reuse the same cache.)
         """
-        # Delete any existing cache for this session — content is changing
-        cache_file = self._cache_file()
-        if cache_file:
-            _delete_cache(cache_file)
-
         self.chunks     = chunks
         self.embeddings = None
 
         if self._semantic:
-            self._build_index(raw_text_for_hash=raw_text)
+            self._build_index(raw_text_for_hash=raw_text, source_key=source_key)
 
     # ── Loaders ───────────────────────────────────────────────────────────
 
-    def load_pdf_ocr(self, pages: list, raw_text: str = "") -> bool:
+    def load_pdf_ocr(self, pages: list, raw_text: str = "", source_key: str = "") -> bool:
         chunks: List[str] = []
         for page in pages:
             text = (page.get("markdown") or "").strip()
@@ -401,7 +561,7 @@ class RAGHelper:
             full = f"[Page {pnum}]\n{text}"
             chunks.extend(self._split(full) if len(full) > self.CHUNK_SIZE else [full])
         print(f"[RAGHelper] OCR: {len(pages)} pages → {len(chunks)} chunks", flush=True)
-        self._ingest(chunks, raw_text=raw_text)
+        self._ingest(chunks, raw_text=raw_text, source_key=source_key)
         return len(self.chunks) > 0
 
     def load_pdf(self, file_path: str) -> bool:
@@ -434,19 +594,19 @@ class RAGHelper:
             print(f"[RAGHelper] Text load error: {e}", flush=True)
             return False
 
-    def load_raw(self, text: str) -> None:
+    def load_raw(self, text: str, source_key: str = "") -> None:
         chunks = self._split(text)
         print(f"[RAGHelper] Raw text: {len(chunks)} chunks", flush=True)
-        self._ingest(chunks, raw_text=text)
+        self._ingest(chunks, raw_text=text, source_key=source_key)
 
-    def load_text_content(self, text: str, metadata: dict = None) -> bool:
+    def load_text_content(self, text: str, metadata: dict = None, source_key: str = "") -> bool:
         """Alias used by YouTube route."""
-        self.load_raw(text)
+        self.load_raw(text, source_key=source_key)
         return len(self.chunks) > 0
 
     # ── Rebuild from cache (server restart) ───────────────────────────────
 
-    def load_from_cache_or_raw(self, text: str) -> bool:
+    def load_from_cache_or_raw(self, text: str, source_key: str = "") -> bool:
         """
         Called by _rebuild_handler on server restart.
         Tries cache first (instant). Falls back to re-embedding from text.
@@ -457,23 +617,23 @@ class RAGHelper:
             return False
 
         api_key    = _get_api_key()
-        text_hash  = _text_hash(text)
-        cache_file = self._cache_file()
+        text_hash  = source_key if source_key else _text_hash(text)
+        cache_file = self._cache_file_for(text_hash)
 
-        # ── Try cache ─────────────────────────────────────────────────────
-        if api_key and cache_file and text_hash:
-            cached_chunks, cached_emb = _load_cache(cache_file, text_hash)
-            if cached_chunks is not None and cached_emb is not None and \
-               len(cached_chunks) == len(chunks) and \
-               cached_emb.shape == (len(chunks), _DIM):
-                self.chunks     = cached_chunks
-                self.embeddings = cached_emb
-                print(f"[RAGHelper] Restored from cache: "
-                      f"{len(self.chunks)} chunks", flush=True)
+        # ── Try cache (hit = same content was embedded before, any session) ──
+        if api_key and cache_file:
+            cached_chunks, cached_emb = _load_cache(cache_file, text_hash,
+                                                     cache_dir=self.cache_dir or "")
+            if cached_chunks is not None and cached_emb is not None:
+                self.chunks           = cached_chunks
+                self.embeddings       = cached_emb
+                self._last_cache_file = cache_file
+                print(f"[RAGHelper] Cache hit: {len(self.chunks)} chunks"
+                      f" (source_key={text_hash})", flush=True)
                 return True
 
-        # ── Cache miss — re-embed (happens only on first run or after cache cleared) ──
-        self._ingest(chunks, raw_text=text)
+        # ── Cache miss — embed in parallel, cache saved inside _build_index ──
+        self._ingest(chunks, raw_text=text, source_key=source_key)
         return len(self.chunks) > 0
 
     # ── Retrieval ─────────────────────────────────────────────────────────
@@ -509,11 +669,16 @@ class RAGHelper:
         return len(self.chunks)
 
     def clear(self) -> None:
-        cache_file = self._cache_file()
-        if cache_file:
-            _delete_cache(cache_file)
-        self.chunks     = []
-        self.embeddings = None
+        # Delete the cache file we last wrote (named by content hash)
+        last = getattr(self, "_last_cache_file", None)
+        if last:
+            fname = os.path.basename(last)
+            h = fname.replace("embed_", "").replace(".npz", "") \
+                if fname.startswith("embed_") else ""
+            _delete_cache(last, cache_dir=self.cache_dir or "", text_hash=h)
+        self.chunks            = []
+        self.embeddings        = None
+        self._last_cache_file  = None
 
     def clear_database(self) -> bool:
         self.clear()
