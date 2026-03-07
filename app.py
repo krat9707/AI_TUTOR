@@ -130,9 +130,13 @@ def _rebuild_handler(s: StudySession) -> StudyAssistantHandler:
     _is_content = s.content_type in ("youtube", "pdf", "text") or bool(s.transcript_json)
     if _rebuild_text and _is_content:
         try:
-            h.rag_helper = None  # always start fresh on server restart
-            h.initialize_rag(collection_name=f"session_{s.sid}")
-            h.rag_helper.load_raw(_rebuild_text)
+            from rag_helper import RAGHelper
+            h.rag_helper = RAGHelper(
+                collection_name=f"session_{s.sid}",
+                sid=s.sid,
+                cache_dir=app.config["UPLOAD_FOLDER"],
+            )
+            h.rag_helper.load_from_cache_or_raw(_rebuild_text)
             print(f"[RAG] Rebuilt {h.rag_helper.count()} chunks for {s.sid} (type={s.content_type})", flush=True)
         except Exception as e:
             print(f"[RAG] Rebuild failed for {s.sid}: {e}", flush=True)
@@ -319,9 +323,13 @@ def api_chat_message(sid, tid):
                 pass
         if _rag_text:
             try:
-                h.rag_helper = None
-                h.initialize_rag(collection_name=f"session_{sid}")
-                h.rag_helper.load_raw(_rag_text)
+                from rag_helper import RAGHelper
+                h.rag_helper = RAGHelper(
+                    collection_name=f"session_{sid}",
+                    sid=sid,
+                    cache_dir=app.config["UPLOAD_FOLDER"],
+                )
+                h.rag_helper.load_from_cache_or_raw(_rag_text)
                 print(f"[Chat] Lazy-loaded {h.rag_helper.count()} RAG chunks for {sid}", flush=True)
             except Exception as _re:
                 print(f"[Chat] RAG lazy-load failed: {_re}", flush=True)
@@ -707,9 +715,13 @@ def api_upload_doc(sid):
                 for p in pages if (p.get('markdown') or '').strip()
             )
             # Build RAG chunks page-aware (reset any existing chunks)
-            h.rag_helper = None
-            h.initialize_rag(collection_name=f"session_{sid}")
-            h.rag_helper.load_pdf_ocr(pages)
+            from rag_helper import RAGHelper
+            h.rag_helper = RAGHelper(
+                collection_name=f"session_{sid}",
+                sid=sid,
+                cache_dir=app.config["UPLOAD_FOLDER"],
+            )
+            h.rag_helper.load_pdf_ocr(pages, raw_text=s.raw_text)
             # Save extracted figures for the Figures tab
             num_figures = _save_ocr_figures(sid, pages)
         else:
@@ -725,8 +737,12 @@ def api_upload_doc(sid):
             except Exception as _e:
                 print(f"[upload_doc] pypdf fallback failed: {_e}", flush=True)
             if s.raw_text:
-                h.rag_helper = None
-                h.initialize_rag(collection_name=f"session_{sid}")
+                from rag_helper import RAGHelper
+                h.rag_helper = RAGHelper(
+                    collection_name=f"session_{sid}",
+                    sid=sid,
+                    cache_dir=app.config["UPLOAD_FOLDER"],
+                )
                 h.rag_helper.load_raw(s.raw_text)
     else:
         try:
@@ -735,8 +751,12 @@ def api_upload_doc(sid):
         except Exception as _e:
             print(f"[upload_doc] could not read text: {_e}", flush=True)
         if s.raw_text:
-            h.rag_helper = None
-            h.initialize_rag(collection_name=f"session_{sid}")
+            from rag_helper import RAGHelper
+            h.rag_helper = RAGHelper(
+                collection_name=f"session_{sid}",
+                sid=sid,
+                cache_dir=app.config["UPLOAD_FOLDER"],
+            )
             h.rag_helper.load_raw(s.raw_text)
 
     db.session.commit()
@@ -1068,8 +1088,12 @@ def api_add_youtube(sid):
     print("[YT] Indexing transcript into RAG...", flush=True)
     ok = False
     try:
-        h.rag_helper = None  # force fresh RAG for new transcript
-        h.initialize_rag(collection_name=f"session_{sid}")
+        from rag_helper import RAGHelper
+        h.rag_helper = RAGHelper(
+            collection_name=f"session_{sid}",
+            sid=sid,
+            cache_dir=app.config["UPLOAD_FOLDER"],
+        )
         ok = h.rag_helper.load_text_content(
             transcript_text,
             metadata={"source": url, "video_id": video_id, "type": "youtube"}
@@ -1275,7 +1299,16 @@ def api_clear_docs(sid):
     db.session.commit()
 
     if h:
-        h.initialize_rag(collection_name=f"session_{sid}")
+        if h.rag_helper is None:
+            from rag_helper import RAGHelper
+            h.rag_helper = RAGHelper(
+                collection_name=f"session_{sid}",
+                sid=sid,
+                cache_dir=app.config["UPLOAD_FOLDER"],
+            )
+        else:
+            h.rag_helper.sid       = sid
+            h.rag_helper.cache_dir = app.config["UPLOAD_FOLDER"]
         h.clear_documents()
 
     return jsonify({"ok": True})
@@ -1292,6 +1325,11 @@ def api_delete_session(sid):
         if os.path.exists(path):
             os.remove(path)
 
+    # Delete embedding cache
+    import os as _os
+    _cache = _os.path.join(app.config["UPLOAD_FOLDER"], f"{sid}.npz")
+    if _os.path.exists(_cache):
+        _os.remove(_cache)
     db.session.delete(s)
     db.session.commit()
     _handlers.pop(sid, None)

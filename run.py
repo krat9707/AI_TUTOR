@@ -93,12 +93,12 @@ if __name__ == "__main__":
 
     print(f"""
 ╔══════════════════════════════════════════════════════╗
-║   🎓  StudyAI — Multi-Agent Learning Platform         ║
+║   🎓  StudyAI — Multi-Agent Learning Platform        ║
 ╠══════════════════════════════════════════════════════╣
-║   🌐  http://localhost:{PORT:<28}  ║
-║   🔧  Debug mode : {str(DEBUG):<32}  ║
+║   🌐  http://localhost:{PORT:<28}                    ║
+║   🔧  Debug mode : {str(DEBUG):<32}                  ║
 ║   🗄️  Database   : studyai.db (SQLite)               ║
-║   🧠  RAG        : BM25 in-memory (no downloads)     ║
+║   🧠  RAG        : Codestral-embed (Backup: BM25)    ║
 ╚══════════════════════════════════════════════════════╝
 """)
 

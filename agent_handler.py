@@ -323,17 +323,20 @@ class StudyAssistantHandler:
 
     # ── RAG ────────────────────────────────────────────────────────────────
 
-    def initialize_rag(self, collection_name: str = "study_materials", persist_directory: str = None) -> None:
+    def initialize_rag(self, collection_name: str = "study_materials",
+                        persist_directory: str = None,
+                        sid: str = None, cache_dir: str = None) -> None:
         """Create RAGHelper only if one doesn't already exist with loaded chunks.
-        Routes that call this defensively (summarize, quiz etc.) won't wipe loaded data.
-        Pass force=True is not possible here but content-loading methods always call load_raw
-        directly after, so this is safe.
+        sid + cache_dir enable .npz disk cache per session.
         """
         from rag_helper import RAGHelper
-        # If we already have a populated RAGHelper, keep it — don't wipe chunks
         if self.rag_helper is not None and self.rag_helper.count() > 0:
             return
-        self.rag_helper = RAGHelper(collection_name=collection_name)
+        self.rag_helper = RAGHelper(
+            collection_name=collection_name,
+            sid=sid,
+            cache_dir=cache_dir,
+        )
 
     def add_document_to_rag(self, file_path: str, file_type: str = "pdf") -> bool:
         if not self.rag_helper:

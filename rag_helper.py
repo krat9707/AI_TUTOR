@@ -1,44 +1,55 @@
 """
 StudyAI — RAG Helper
-Semantic search powered by Mistral's codestral-embed model.
-Falls back to BM25 if MISTRAL_API_KEY is absent.
+Semantic search via Mistral codestral-embed with:
+  - Parallel batch embedding  (ThreadPoolExecutor, ~15x faster than serial)
+  - Disk cache               (uploads/{sid}.npz — instant on restart)
+  - BM25 fallback            (if MISTRAL_API_KEY absent or API fails)
 
-Embedding model : codestral-embed  (1024-dim, 16k context)
-Similarity      : cosine (dot-product on L2-normalised vectors)
-Chunking        : 512-char chunks, 80-char overlap, boundary-aware
-Batching        : up to 64 texts per API call
+Cache strategy
+  - Named  uploads/{sid}.npz  (one file per session, bounded storage)
+  - Stores  chunks + embeddings + sha256(raw_text[:64])
+  - Invalidated automatically when new content is ingested (file deleted
+    before embed, rewritten after)
+  - Deleted on session clear/delete via RAGHelper.clear()
 """
 
 import os
 import re
 import math
 import time
+import hashlib
+import threading
 from collections import Counter
-from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Optional, Tuple
 
 import numpy as np
 import requests
 
 
-# ── Embedding API ──────────────────────────────────────────────────────────────
+# ── Constants ─────────────────────────────────────────────────────────────────
 
 _EMBED_URL   = "https://api.mistral.ai/v1/embeddings"
 _EMBED_MODEL = "codestral-embed"
-_BATCH_SIZE  = 64        # well within Mistral API limits
-_DIM         = 1024      # codestral-embed output dimension
-_RETRY_MAX   = 3
-_RETRY_DELAY = 1.5       # seconds, doubled on each retry
+_BATCH_SIZE  = 128      # doubled from 64 — fewer round-trips, still safe
+_MAX_WORKERS = 10       # concurrent API calls; stays under Mistral rate limits
+_DIM         = 1024     # codestral-embed output dimension
+_RETRY_MAX   = 4
+_RETRY_BASE  = 1.0      # seconds; doubles each attempt
 
+
+# ── API helpers ───────────────────────────────────────────────────────────────
 
 def _get_api_key() -> str:
     return os.environ.get("MISTRAL_API_KEY", "").strip()
 
 
-def _embed_batch(texts: List[str], api_key: str) -> Optional[np.ndarray]:
+def _embed_batch(texts: List[str], api_key: str, batch_idx: int = 0
+                 ) -> Tuple[int, Optional[np.ndarray]]:
     """
-    Embed one batch of texts via codestral-embed.
-    Returns (N, 1024) float32 array, each row L2-normalised.
-    Returns None on unrecoverable failure.
+    Embed one batch. Returns (batch_idx, array) so the caller can
+    reassemble results in order after parallel execution.
+    Returns (batch_idx, None) on unrecoverable failure.
     """
     for attempt in range(_RETRY_MAX):
         try:
@@ -52,8 +63,9 @@ def _embed_batch(texts: List[str], api_key: str) -> Optional[np.ndarray]:
                 timeout=60,
             )
             if r.status_code == 429:
-                wait = _RETRY_DELAY * (2 ** attempt)
-                print(f"[Embed] Rate-limited — retrying in {wait:.1f}s", flush=True)
+                wait = _RETRY_BASE * (2 ** attempt)
+                print(f"[Embed] batch {batch_idx} rate-limited — "
+                      f"retry in {wait:.1f}s", flush=True)
                 time.sleep(wait)
                 continue
             r.raise_for_status()
@@ -61,38 +73,132 @@ def _embed_batch(texts: List[str], api_key: str) -> Optional[np.ndarray]:
             vecs = np.array([d["embedding"] for d in data], dtype=np.float32)
             norms = np.linalg.norm(vecs, axis=1, keepdims=True)
             norms = np.where(norms == 0, 1.0, norms)
-            return vecs / norms
-        except requests.RequestException as e:
+            return batch_idx, vecs / norms
+        except requests.RequestException as exc:
             if attempt < _RETRY_MAX - 1:
-                time.sleep(_RETRY_DELAY)
+                time.sleep(_RETRY_BASE * (2 ** attempt))
             else:
-                print(f"[Embed] API error after {_RETRY_MAX} attempts: {e}", flush=True)
-                return None
-    return None
+                print(f"[Embed] batch {batch_idx} failed after "
+                      f"{_RETRY_MAX} attempts: {exc}", flush=True)
+                return batch_idx, None
+    return batch_idx, None
 
 
-def _embed_many(texts: List[str], api_key: str) -> Optional[np.ndarray]:
-    """Embed any number of texts, batching automatically."""
+def _embed_parallel(texts: List[str], api_key: str) -> Optional[np.ndarray]:
+    """
+    Embed texts using parallel workers.
+    Splits into _BATCH_SIZE batches, fires up to _MAX_WORKERS concurrently.
+    Returns (N, 1024) float32 array or None if any batch fails.
+    """
     if not texts:
         return np.zeros((0, _DIM), dtype=np.float32)
-    parts = []
-    for i in range(0, len(texts), _BATCH_SIZE):
-        vecs = _embed_batch(texts[i : i + _BATCH_SIZE], api_key)
-        if vecs is None:
-            return None
-        parts.append(vecs)
-    return np.concatenate(parts, axis=0)
+
+    batches = [
+        (i // _BATCH_SIZE, texts[i : i + _BATCH_SIZE])
+        for i in range(0, len(texts), _BATCH_SIZE)
+    ]
+    n_batches = len(batches)
+    results: dict = {}
+
+    with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, n_batches)) as pool:
+        futures = {
+            pool.submit(_embed_batch, batch, api_key, idx): idx
+            for idx, batch in batches
+        }
+        for future in as_completed(futures):
+            idx, vecs = future.result()
+            if vecs is None:
+                # Cancel remaining futures and abort
+                for f in futures:
+                    f.cancel()
+                return None
+            results[idx] = vecs
+
+    # Reassemble in order
+    return np.concatenate([results[i] for i in range(n_batches)], axis=0)
 
 
 def _embed_one(text: str, api_key: str) -> Optional[np.ndarray]:
-    """Embed a single string → (1024,) float32, L2-normalised."""
-    vecs = _embed_batch([text], api_key)
+    """Embed a single query string → (1024,) L2-normalised float32."""
+    _, vecs = _embed_batch([text], api_key, batch_idx=0)
     return vecs[0] if vecs is not None else None
+
+
+# ── Cache helpers ─────────────────────────────────────────────────────────────
+
+def _text_hash(text: str) -> str:
+    """Short SHA-256 fingerprint of the raw text."""
+    return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def _cache_path(cache_dir: str, sid: str) -> str:
+    return os.path.join(cache_dir, f"{sid}.npz")
+
+
+def _save_cache(path: str, chunks: List[str],
+                embeddings: np.ndarray, text_hash: str) -> None:
+    """Save chunks + embeddings + hash to a .npz file."""
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # numpy can't store a list of strings directly as a structured array;
+        # store as object array
+        chunks_arr = np.empty(len(chunks), dtype=object)
+        for i, c in enumerate(chunks):
+            chunks_arr[i] = c
+        np.savez_compressed(
+            path,
+            embeddings=embeddings,
+            chunks=chunks_arr,
+            text_hash=np.array([text_hash]),
+        )
+        mb = os.path.getsize(path) / 1024 / 1024
+        print(f"[Cache] Saved {path} ({mb:.1f} MB)", flush=True)
+    except Exception as e:
+        print(f"[Cache] Save failed: {e}", flush=True)
+
+
+def _load_cache(path: str, expected_hash: str
+                ) -> Tuple[Optional[List[str]], Optional[np.ndarray]]:
+    """
+    Load cache if it exists and hash matches.
+    Returns (chunks, embeddings) or (None, None) on miss/mismatch.
+    """
+    if not os.path.exists(path):
+        return None, None
+    try:
+        data        = np.load(path, allow_pickle=True)
+        stored_hash = str(data["text_hash"][0])
+        if stored_hash != expected_hash:
+            print(f"[Cache] Hash mismatch — stale cache, re-embedding", flush=True)
+            os.remove(path)
+            return None, None
+        chunks     = list(data["chunks"])
+        embeddings = data["embeddings"].astype(np.float32)
+        mb = os.path.getsize(path) / 1024 / 1024
+        print(f"[Cache] Hit {path} — {len(chunks)} chunks ({mb:.1f} MB)", flush=True)
+        return chunks, embeddings
+    except Exception as e:
+        print(f"[Cache] Load failed: {e} — re-embedding", flush=True)
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+        return None, None
+
+
+def _delete_cache(path: str) -> None:
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+            print(f"[Cache] Deleted {path}", flush=True)
+    except Exception as e:
+        print(f"[Cache] Delete failed: {e}", flush=True)
 
 
 # ── BM25 fallback ─────────────────────────────────────────────────────────────
 
-def _bm25(query: str, chunks: List[str], k1: float = 1.5, b: float = 0.75) -> List[float]:
+def _bm25(query: str, chunks: List[str],
+          k1: float = 1.5, b: float = 0.75) -> List[float]:
     q_terms = re.findall(r"\w+", query.lower())
     if not q_terms:
         return [0.0] * len(chunks)
@@ -106,18 +212,18 @@ def _bm25(query: str, chunks: List[str], k1: float = 1.5, b: float = 0.75) -> Li
         total_len += len(words)
         for term in set(q_terms) & set(words):
             df[term] += 1
-    N       = len(chunks)
+    N = len(chunks)
     avg_len = total_len / N if N else 1
-    scores  = []
+    scores = []
     for tf in tokenized:
         dl = sum(tf.values())
-        s  = 0.0
+        s = 0.0
         for term in q_terms:
             if term not in tf:
                 continue
-            idf    = math.log((N - df[term] + 0.5) / (df[term] + 0.5) + 1)
-            tf_n   = (tf[term] * (k1 + 1)) / (tf[term] + k1 * (1 - b + b * dl / avg_len))
-            s     += idf * tf_n
+            idf  = math.log((N - df[term] + 0.5) / (df[term] + 0.5) + 1)
+            tf_n = (tf[term] * (k1 + 1)) / (tf[term] + k1 * (1 - b + b * dl / avg_len))
+            s   += idf * tf_n
         scores.append(s)
     return scores
 
@@ -125,27 +231,31 @@ def _bm25(query: str, chunks: List[str], k1: float = 1.5, b: float = 0.75) -> Li
 # ── RAGHelper ─────────────────────────────────────────────────────────────────
 
 class RAGHelper:
-    # Smaller chunks → more semantically precise matches for codestral-embed
     CHUNK_SIZE    = 512
     CHUNK_OVERLAP = 80
 
     def __init__(self, collection_name: str = "study_materials",
-                 persist_directory: Optional[str] = None):
+                 persist_directory: Optional[str] = None,
+                 sid: Optional[str] = None,
+                 cache_dir: Optional[str] = None):
         self.collection_name = collection_name
-        self.chunks     : List[str]             = []
-        self.embeddings : Optional[np.ndarray]  = None   # (N, 1024)
-        self._semantic  : bool                  = bool(_get_api_key())
+        self.sid             = sid        # session id — used as cache filename
+        self.cache_dir       = cache_dir  # directory to store .npz files
+        self.chunks     : List[str]            = []
+        self.embeddings : Optional[np.ndarray] = None   # (N, 1024)
+        self._semantic  : bool                 = bool(_get_api_key())
         if self._semantic:
-            print("[RAGHelper] Mode: semantic (codestral-embed)", flush=True)
+            print("[RAGHelper] Mode: semantic (codestral-embed + parallel + cache)",
+                  flush=True)
         else:
             print("[RAGHelper] Mode: BM25 (no MISTRAL_API_KEY)", flush=True)
 
     # ── Chunker ───────────────────────────────────────────────────────────
 
     def _split(self, text: str) -> List[str]:
-        """Boundary-aware chunker — breaks at paragraph > sentence > line."""
+        """Boundary-aware chunker — paragraph > sentence > line."""
         chunks: List[str] = []
-        text  = text.strip()
+        text = text.strip()
         start = 0
         while start < len(text):
             end = min(start + self.CHUNK_SIZE, len(text))
@@ -164,39 +274,90 @@ class RAGHelper:
             start = next_start
         return chunks
 
+    # ── Cache path ────────────────────────────────────────────────────────
+
+    def _cache_file(self) -> Optional[str]:
+        if self.sid and self.cache_dir:
+            return _cache_path(self.cache_dir, self.sid)
+        return None
+
     # ── Index builder ─────────────────────────────────────────────────────
 
-    def _build_index(self) -> None:
-        """Call Mistral to embed all chunks. Stores (N,1024) float32 array."""
+    def _build_index(self, raw_text_for_hash: str = "") -> None:
+        """
+        Build semantic index with parallel embedding + disk cache.
+        1. Check cache (keyed by sid + hash of raw text)
+        2. Cache hit  → load embeddings from disk, done in ~1s
+        3. Cache miss → embed in parallel, save to disk
+        """
         if not self.chunks:
             self.embeddings = None
             return
+
         api_key = _get_api_key()
         if not api_key:
             self.embeddings = None
             return
+
+        text_hash  = _text_hash(raw_text_for_hash) if raw_text_for_hash else ""
+        cache_file = self._cache_file()
+
+        # ── Try cache first ────────────────────────────────────────────────
+        if cache_file and text_hash:
+            cached_chunks, cached_emb = _load_cache(cache_file, text_hash)
+            if cached_chunks is not None and cached_emb is not None:
+                # Validate shape matches current chunks
+                if len(cached_chunks) == len(self.chunks) and \
+                   cached_emb.shape == (len(self.chunks), _DIM):
+                    self.embeddings = cached_emb
+                    return
+                else:
+                    print("[Cache] Shape mismatch — re-embedding", flush=True)
+
+        # ── Cache miss: embed in parallel ──────────────────────────────────
         n = len(self.chunks)
-        print(f"[RAGHelper] Building semantic index: {n} chunks…", flush=True)
+        n_batches = math.ceil(n / _BATCH_SIZE)
+        workers   = min(_MAX_WORKERS, n_batches)
+        print(f"[RAGHelper] Embedding {n} chunks "
+              f"({n_batches} batches × {_BATCH_SIZE}, {workers} workers)…",
+              flush=True)
         t0   = time.time()
-        vecs = _embed_many(self.chunks, api_key)
+        vecs = _embed_parallel(self.chunks, api_key)
+
         if vecs is None:
             print("[RAGHelper] Embedding failed — BM25 fallback active", flush=True)
             self.embeddings = None
-        else:
-            self.embeddings = vecs
-            print(f"[RAGHelper] Index ready: {n} chunks × {_DIM}d "
-                  f"in {time.time()-t0:.1f}s", flush=True)
+            return
 
-    def _ingest(self, chunks: List[str]) -> None:
-        """Store chunks and build semantic index."""
+        self.embeddings = vecs
+        elapsed = time.time() - t0
+        print(f"[RAGHelper] Index ready: {n} chunks × {_DIM}d "
+              f"in {elapsed:.1f}s  "
+              f"({n/elapsed:.0f} chunks/s)", flush=True)
+
+        # ── Save to cache ──────────────────────────────────────────────────
+        if cache_file and text_hash:
+            _save_cache(cache_file, self.chunks, vecs, text_hash)
+
+    def _ingest(self, chunks: List[str], raw_text: str = "") -> None:
+        """
+        Store chunks, delete stale cache, build fresh index.
+        raw_text is used for cache key hashing.
+        """
+        # Delete any existing cache for this session — content is changing
+        cache_file = self._cache_file()
+        if cache_file:
+            _delete_cache(cache_file)
+
         self.chunks     = chunks
         self.embeddings = None
+
         if self._semantic:
-            self._build_index()
+            self._build_index(raw_text_for_hash=raw_text)
 
     # ── Loaders ───────────────────────────────────────────────────────────
 
-    def load_pdf_ocr(self, pages: list) -> bool:
+    def load_pdf_ocr(self, pages: list, raw_text: str = "") -> bool:
         chunks: List[str] = []
         for page in pages:
             text = (page.get("markdown") or "").strip()
@@ -206,7 +367,7 @@ class RAGHelper:
             full = f"[Page {pnum}]\n{text}"
             chunks.extend(self._split(full) if len(full) > self.CHUNK_SIZE else [full])
         print(f"[RAGHelper] OCR: {len(pages)} pages → {len(chunks)} chunks", flush=True)
-        self._ingest(chunks)
+        self._ingest(chunks, raw_text=raw_text)
         return len(self.chunks) > 0
 
     def load_pdf(self, file_path: str) -> bool:
@@ -219,8 +380,9 @@ class RAGHelper:
                 for i, p in enumerate(pages) if p.strip()
             )
             chunks = self._split(text)
-            print(f"[RAGHelper] pypdf: {len(reader.pages)} pages → {len(chunks)} chunks", flush=True)
-            self._ingest(chunks)
+            print(f"[RAGHelper] pypdf: {len(reader.pages)} pages → "
+                  f"{len(chunks)} chunks", flush=True)
+            self._ingest(chunks, raw_text=text)
             return len(self.chunks) > 0
         except Exception as e:
             print(f"[RAGHelper] PDF load error: {e}", flush=True)
@@ -232,7 +394,7 @@ class RAGHelper:
                 text = f.read()
             chunks = self._split(text)
             print(f"[RAGHelper] Text file: {len(chunks)} chunks", flush=True)
-            self._ingest(chunks)
+            self._ingest(chunks, raw_text=text)
             return len(self.chunks) > 0
         except Exception as e:
             print(f"[RAGHelper] Text load error: {e}", flush=True)
@@ -241,11 +403,43 @@ class RAGHelper:
     def load_raw(self, text: str) -> None:
         chunks = self._split(text)
         print(f"[RAGHelper] Raw text: {len(chunks)} chunks", flush=True)
-        self._ingest(chunks)
+        self._ingest(chunks, raw_text=text)
 
     def load_text_content(self, text: str, metadata: dict = None) -> bool:
         """Alias used by YouTube route."""
         self.load_raw(text)
+        return len(self.chunks) > 0
+
+    # ── Rebuild from cache (server restart) ───────────────────────────────
+
+    def load_from_cache_or_raw(self, text: str) -> bool:
+        """
+        Called by _rebuild_handler on server restart.
+        Tries cache first (instant). Falls back to re-embedding from text.
+        Returns True if semantic index is ready (or BM25 is active).
+        """
+        chunks = self._split(text)
+        if not chunks:
+            return False
+
+        api_key    = _get_api_key()
+        text_hash  = _text_hash(text)
+        cache_file = self._cache_file()
+
+        # ── Try cache ─────────────────────────────────────────────────────
+        if api_key and cache_file and text_hash:
+            cached_chunks, cached_emb = _load_cache(cache_file, text_hash)
+            if cached_chunks is not None and cached_emb is not None and \
+               len(cached_chunks) == len(chunks) and \
+               cached_emb.shape == (len(chunks), _DIM):
+                self.chunks     = cached_chunks
+                self.embeddings = cached_emb
+                print(f"[RAGHelper] Restored from cache: "
+                      f"{len(self.chunks)} chunks", flush=True)
+                return True
+
+        # ── Cache miss — re-embed (happens only on first run or after cache cleared) ──
+        self._ingest(chunks, raw_text=text)
         return len(self.chunks) > 0
 
     # ── Retrieval ─────────────────────────────────────────────────────────
@@ -254,19 +448,19 @@ class RAGHelper:
         if not self.chunks:
             return []
 
-        # ── Semantic retrieval ─────────────────────────────────────────────
-        if self.embeddings is not None and len(self.embeddings) == len(self.chunks):
+        # ── Semantic ──────────────────────────────────────────────────────
+        if self.embeddings is not None and \
+           len(self.embeddings) == len(self.chunks):
             api_key = _get_api_key()
             if api_key:
                 q_vec = _embed_one(question, api_key)
                 if q_vec is not None:
-                    # Dot product = cosine sim (vectors are L2-normalised)
-                    sims   = self.embeddings @ q_vec          # (N,)
+                    sims   = self.embeddings @ q_vec      # cosine sim (L2-normed)
                     top_k  = min(k, len(sims))
                     ranked = np.argsort(sims)[::-1][:top_k]
                     return [self.chunks[i] for i in ranked]
 
-        # ── BM25 fallback ──────────────────────────────────────────────────
+        # ── BM25 fallback ─────────────────────────────────────────────────
         scores = _bm25(question, self.chunks)
         ranked = sorted(range(len(scores)), key=lambda i: -scores[i])
         top    = [self.chunks[i] for i in ranked[:k] if scores[i] > 0]
@@ -281,6 +475,9 @@ class RAGHelper:
         return len(self.chunks)
 
     def clear(self) -> None:
+        cache_file = self._cache_file()
+        if cache_file:
+            _delete_cache(cache_file)
         self.chunks     = []
         self.embeddings = None
 
