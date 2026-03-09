@@ -1402,7 +1402,7 @@ def api_transcript(sid):
                 "quiet": True, "no_warnings": True,
                 "skip_download": True, "socket_timeout": 8,
                 "extract_flat": False,
-                "proxy": os.environ.get("PROXY_URL") or None,
+                # "proxy": os.environ.get("PROXY_URL") or None,
             }
             with _ydlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(
