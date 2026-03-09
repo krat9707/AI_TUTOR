@@ -234,6 +234,17 @@ def session_view(sid):
             original = s.pdf_filename[len(sid) + 1:]  # strip 'sid_' prefix
             pdf_url  = url_for('serve_pdf', sid=sid, filename=original)
         return render_template("pdf_session.html", user=u, session=s, pdf_url=pdf_url)
+    if s.content_type == "audio":
+        audio_url = ""
+        if s.pdf_filename:
+            original  = s.pdf_filename[len(sid) + 1:]
+            audio_url = url_for('serve_audio', sid=sid, filename=original)
+        try:
+            return render_template("audio_session.html", user=u, session=s, audio_url=audio_url)
+        except Exception as e:
+            import traceback
+            print(f"[audio_session render error] {e}\n{traceback.format_exc()}", flush=True)
+            return render_template("session.html", user=u, session=s, messages=messages)
     return render_template("session.html", user=u, session=s, messages=messages)
 
 @app.route("/chat/<sid>")
@@ -682,6 +693,49 @@ def _save_ocr_figures(sid: str, pages: list) -> int:
     return len(figures)
 
 
+# ── Audio transcription helper ─────────────────────────────────────────────────
+
+def _transcribe_audio_mistral(audio_bytes: bytes, filename: str) -> str | None:
+    """
+    Transcribe audio using Mistral's Voxtral model.
+    Returns transcript text, or None if the API call fails / key is missing.
+    """
+    import httpx as _httpx
+    api_key = os.environ.get("MISTRAL_API_KEY", "").strip()
+    if not api_key:
+        print("[AUDIO] No MISTRAL_API_KEY — cannot transcribe audio", flush=True)
+        return None
+
+    ext  = os.path.splitext(filename.lower())[1]
+    mime = {
+        ".mp3":  "audio/mpeg",
+        ".wav":  "audio/wav",
+        ".m4a":  "audio/mp4",
+        ".ogg":  "audio/ogg",
+        ".flac": "audio/flac",
+        ".webm": "audio/webm",
+        ".mp4":  "audio/mp4",
+    }.get(ext, "audio/mpeg")
+
+    print(f"[AUDIO] Sending {len(audio_bytes)//1024} KB to Voxtral (mime={mime})…", flush=True)
+    try:
+        r = _httpx.post(
+            "https://api.mistral.ai/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            files={"file": (filename, audio_bytes, mime)},
+            data={"model": "voxtral-mini-2507"},
+            timeout=300,
+        )
+        r.raise_for_status()
+        data = r.json()
+        text = data.get("text", "").strip()
+        print(f"[AUDIO] Transcription done: {len(text)} chars", flush=True)
+        return text or None
+    except Exception as e:
+        print(f"[AUDIO] Voxtral transcription failed: {e}", flush=True)
+        return None
+
+
 # ── RAG / Document routes ──────────────────────────────────────────────────────
 @app.route("/api/session/<sid>/upload_doc", methods=["POST"])
 @login_required
@@ -819,6 +873,140 @@ def api_upload_doc(sid):
         "figures":     num_figures,
         "pdf_filename": save_name if ft == "pdf" else "",
     })
+
+@app.route("/api/session/<sid>/upload_audio", methods=["POST"])
+@login_required
+def api_upload_audio(sid):
+    """
+    Receive an audio file, transcribe it with Mistral Voxtral,
+    cache both the transcript text and the RAG embeddings, and
+    initialise the session handler ready for AI features.
+    """
+    import hashlib as _hl
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+
+    if "audio" not in request.files:
+        return jsonify({"ok": False, "error": "No audio file provided"}), 400
+
+    f    = request.files["audio"]
+    name = secure_filename(f.filename or "recording.webm")
+    ext  = name.rsplit(".", 1)[-1].lower()
+    if ext not in ("mp3", "wav", "m4a", "ogg", "flac", "webm", "mp4"):
+        return jsonify({"ok": False, "error": "Unsupported audio format. Use MP3, WAV, M4A, OGG, FLAC, or WEBM."}), 400
+
+    audio_bytes = f.read()
+    if not audio_bytes:
+        return jsonify({"ok": False, "error": "Empty audio file"}), 400
+
+    # ── Save audio file to disk ───────────────────────────────────────
+    save_name = f"{sid}_{name}"
+    path      = os.path.join(app.config["UPLOAD_FOLDER"], save_name)
+    with open(path, "wb") as af:
+        af.write(audio_bytes)
+
+    # ── Stable cache key ──────────────────────────────────────────────
+    embed_key = _hl.sha256(audio_bytes).hexdigest()[:16]
+
+    # ── Transcript cache: skip Voxtral if already transcribed ─────────
+    transcript_cache = os.path.join(
+        app.config["UPLOAD_FOLDER"], f"transcript_{embed_key}.txt"
+    )
+    if os.path.exists(transcript_cache):
+        print(f"[AUDIO] Transcript cache hit for {embed_key}", flush=True)
+        with open(transcript_cache, "r", encoding="utf-8") as tc:
+            transcript = tc.read()
+    else:
+        transcript = _transcribe_audio_mistral(audio_bytes, name)
+        if not transcript:
+            # Clean up saved file on failure
+            if os.path.exists(path):
+                os.remove(path)
+            return jsonify({
+                "ok": False,
+                "error": "Transcription failed. Ensure MISTRAL_API_KEY is set and the model voxtral-mini-2507 is accessible."
+            }), 500
+        with open(transcript_cache, "w", encoding="utf-8") as tc:
+            tc.write(transcript)
+
+    # ── Persist to session ────────────────────────────────────────────
+    s.raw_text     = transcript
+    s.embed_key    = embed_key
+    s.content_type = "audio"
+    s.pdf_filename = save_name   # reuse field for audio file path
+    # Update topic from filename if blank
+    title_from_req = (request.form.get("title") or "").strip()
+    if title_from_req:
+        s.topic = title_from_req
+    elif not s.topic or s.topic == "Untitled":
+        s.topic = name.rsplit(".", 1)[0].replace("-", " ").replace("_", " ").title()
+    db.session.commit()
+
+    # ── RAG (reuse .npz embedding cache if available) ─────────────────
+    h = _get_or_rebuild(sid, s)
+    from rag_helper import RAGHelper, _cache_path, _load_cache
+    _cache_file    = _cache_path(app.config["UPLOAD_FOLDER"], embed_key)
+    _cached_chunks, _cached_emb = _load_cache(
+        _cache_file, embed_key, cache_dir=app.config["UPLOAD_FOLDER"]
+    )
+    if _cached_chunks is not None and _cached_emb is not None:
+        print(f"[AUDIO] RAG cache hit for {embed_key} — {len(_cached_chunks)} chunks", flush=True)
+        h.rag_helper               = RAGHelper(
+            collection_name=f"session_{sid}", sid=sid,
+            cache_dir=app.config["UPLOAD_FOLDER"],
+        )
+        h.rag_helper.chunks           = _cached_chunks
+        h.rag_helper.embeddings       = _cached_emb
+        h.rag_helper._last_cache_file = _cache_file
+    else:
+        h.rag_helper = RAGHelper(
+            collection_name=f"session_{sid}", sid=sid,
+            cache_dir=app.config["UPLOAD_FOLDER"],
+        )
+        h.rag_helper.load_raw(transcript, source_key=embed_key)
+    set_handler(sid, h)
+
+    return jsonify({
+        "ok":                True,
+        "transcript_length": len(transcript),
+        "chunks":            h.get_document_count(),
+        "audio_url":         f"/api/session/{sid}/audio/{name}",
+    })
+
+
+@app.route("/api/session/<sid>/audio/<filename>")
+@login_required
+def serve_audio(sid, filename):
+    """Serve a stored audio file for the in-session player."""
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    expected = f"{sid}_{filename}"
+    if s.pdf_filename != expected:
+        return jsonify({"error": "Not found"}), 404
+    ext  = filename.rsplit(".", 1)[-1].lower()
+    mime = {
+        "mp3": "audio/mpeg", "wav": "audio/wav",  "m4a": "audio/mp4",
+        "ogg": "audio/ogg",  "flac": "audio/flac", "webm": "audio/webm",
+        "mp4": "audio/mp4",
+    }.get(ext, "audio/mpeg")
+    return send_from_directory(
+        os.path.abspath(app.config["UPLOAD_FOLDER"]),
+        expected,
+        mimetype=mime,
+    )
+
+
+@app.route("/api/session/<sid>/save_notes", methods=["POST"])
+@login_required
+def api_save_user_notes(sid):
+    """Save user-typed notes to the session (used by audio & text sessions)."""
+    u    = current_user()
+    s    = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    data = request.get_json() or {}
+    s.notes = data.get("notes", "")
+    db.session.commit()
+    return jsonify({"ok": True})
+
 
 @app.route("/api/session/<sid>/pdf/<filename>")
 @login_required

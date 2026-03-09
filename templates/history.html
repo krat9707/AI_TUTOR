@@ -31,6 +31,7 @@
       --c-text:    #16a34a;
       --c-chat:    #7c3aed;
       --c-topic:   #0284c7;
+      --c-audio:   #7c3aed;
       --r:         12px;
       --rl:        16px;
       --font:      'Geist', -apple-system, sans-serif;
@@ -342,6 +343,7 @@
     .s-card.type-chat    .s-stripe { background: var(--c-chat); }
     .s-card.type-text    .s-stripe { background: var(--c-text); }
     .s-card.type-topic   .s-stripe { background: var(--g4); }
+    .s-card.type-audio   .s-stripe { background: var(--c-audio); }
 
     /* Card body */
     .s-body {
@@ -368,6 +370,7 @@
     .type-chat    .s-icon { background: #f5f0ff; color: var(--c-chat); }
     .type-text    .s-icon { background: #f0fff4; color: var(--c-text); }
     .type-topic   .s-icon { background: var(--g7); color: var(--g3); }
+    .type-audio   .s-icon { background: #f5f0ff; color: var(--c-audio); }
 
     .s-info { flex: 1; min-width: 0; }
     .s-topic {
@@ -416,6 +419,7 @@
     .type-chat    .s-badge { background: #f5f0ff; color: #5b21b6; }
     .type-text    .s-badge { background: #f0fff4; color: #166534; }
     .type-topic   .s-badge { background: var(--g7); color: var(--g3); border: var(--border-md); }
+    .type-audio   .s-badge { background: #f5f0ff; color: #5b21b6; }
 
     .s-date {
       font-family: var(--mono);
@@ -631,10 +635,11 @@
     </div>
 
     <!-- Stats -->
-    {% set total       = sessions | length %}
-    {% set yt_count    = sessions | selectattr('content_type','equalto','youtube') | list | length %}
-    {% set pdf_count   = sessions | selectattr('content_type','equalto','pdf')     | list | length %}
-    {% set topic_count = sessions | selectattr('content_type','equalto','topic')   | list | length %}
+    {% set total        = sessions | length %}
+    {% set yt_count     = sessions | selectattr('content_type','equalto','youtube') | list | length %}
+    {% set pdf_count    = sessions | selectattr('content_type','equalto','pdf')     | list | length %}
+    {% set topic_count  = sessions | selectattr('content_type','equalto','topic')   | list | length %}
+    {% set audio_count  = sessions | selectattr('content_type','equalto','audio')   | list | length %}
 
     <div class="stats-row" id="stats-row">
       <div class="stat-card">
@@ -647,7 +652,7 @@
       </div>
       <div class="stat-card">
         <div class="stat-num" id="stat-other">0</div>
-        <div class="stat-lbl">PDFs &amp; topics</div>
+        <div class="stat-lbl">PDFs, topics &amp; audio</div>
       </div>
     </div>
 
@@ -666,6 +671,9 @@
       </button>
       <button class="filter-pill" data-filter="topic" onclick="setFilter('topic', this)">
         <i data-lucide="book-open" width="11" height="11"></i> Topic
+      </button>
+      <button class="filter-pill" data-filter="audio" onclick="setFilter('audio', this)">
+        <i data-lucide="headphones" width="11" height="11"></i> Audio
       </button>
       <div class="toolbar-gap"></div>
       <div class="search-wrap">
@@ -700,6 +708,8 @@
               <i data-lucide="message-circle" width="16" height="16"></i>
             {% elif ctype == 'text' %}
               <i data-lucide="align-left" width="16" height="16"></i>
+            {% elif ctype == 'audio' %}
+              <i data-lucide="headphones" width="16" height="16"></i>
             {% else %}
               <i data-lucide="book-open" width="16" height="16"></i>
             {% endif %}
@@ -734,6 +744,7 @@
             {% elif ctype == 'pdf' %}PDF
             {% elif ctype == 'chat' %}Chat
             {% elif ctype == 'text' %}Text
+            {% elif ctype == 'audio' %}Audio
             {% else %}Topic{% endif %}
           </span>
           <span class="s-date">{{ s.created_at.strftime('%b %d, %Y') }}</span>
@@ -797,7 +808,7 @@
 
   const TOTAL    = {{ total }};
   const YT_COUNT = {{ yt_count }};
-  const OTHER    = {{ pdf_count + topic_count }};
+  const OTHER    = {{ pdf_count + topic_count + audio_count }};
 
   window.addEventListener('DOMContentLoaded', () => {
     if (typeof lucide !== 'undefined') lucide.createIcons();

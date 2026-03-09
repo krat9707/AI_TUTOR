@@ -141,9 +141,9 @@
       <i data-lucide="clipboard" width="14" height="14"></i>
       Paste Text
     </button>
-    <button class="action-btn" onclick="toast('Record coming soon!')">
-      <i data-lucide="mic" width="14" height="14"></i>
-      Record
+    <button class="action-btn" onclick="openModal('modal-audio')">
+      <i data-lucide="headphones" width="14" height="14"></i>
+      Audio Lectures
     </button>
   </div>
 
@@ -202,6 +202,10 @@
             <i data-lucide="file-text" width="30" height="30"></i>
             <span>{{ s.pdf_filename.split('_',1)[1] if s.pdf_filename and '_' in s.pdf_filename else (s.pdf_filename or 'PDF') }}</span>
           </div>
+        {% elif ct == 'audio' %}
+          <div class="sc-icon-preview sc-audio-bg">
+            <i data-lucide="headphones" width="28" height="28"></i>
+          </div>
         {% elif ct == 'text' and txt_preview %}
           <div class="sc-text-preview"><p>{{ txt_preview }}</p></div>
         {% elif ct == 'chat' %}
@@ -218,7 +222,7 @@
 
       <div class="sc-body">
         <span class="sc-badge sc-badge-{{ ct }}">
-          {% if ct == 'youtube' %}YouTube{% elif ct == 'pdf' %}PDF{% elif ct == 'text' %}Text{% elif ct == 'chat' %}Chat{% else %}Space{% endif %}
+          {% if ct == 'youtube' %}YouTube{% elif ct == 'pdf' %}PDF{% elif ct == 'text' %}Text{% elif ct == 'chat' %}Chat{% elif ct == 'audio' %}Audio{% else %}Space{% endif %}
         </span>
         <div class="sc-title">{{ s.topic or 'Untitled' }}</div>
         <div class="sc-date">{{ s.created_at.strftime('%b %d, %Y') if s.created_at else '' }}</div>
@@ -300,6 +304,125 @@
     <div class="mactions">
       <button class="mbtn mbtn-cancel" onclick="closeModal('modal-topic')">Cancel</button>
       <button class="mbtn mbtn-go" id="create-btn" onclick="doCreate()">Create Space →</button>
+    </div>
+  </div>
+</div>
+
+<!-- AUDIO LECTURES MODAL -->
+<style>
+.sc-audio-bg { background: linear-gradient(135deg,#f3eeff 0%,#eef0ff 100%); color: var(--c-chat); }
+.sc-badge-audio { background: #f5f3ff; color: var(--c-chat); }
+/* Audio modal tabs */
+.audio-tabs { display:flex; gap:2px; background:var(--g7); border-radius:var(--r); padding:3px; margin-bottom:14px; }
+.atab { flex:1; padding:7px; border-radius:8px; border:none; background:none; font-family:var(--font); font-size:12.5px; font-weight:500; color:var(--g4); cursor:pointer; transition:background .14s,color .14s; }
+.atab.active { background:var(--white); color:var(--black); box-shadow:0 1px 4px rgba(0,0,0,.06); }
+/* Drop zone */
+.audio-drop-zone { border:1.5px dashed var(--g5); border-radius:var(--r); padding:28px 20px; text-align:center; cursor:pointer; transition:border-color .2s,background .2s; display:flex; flex-direction:column; align-items:center; gap:8px; }
+.audio-drop-zone:hover { border-color:var(--g4); background:var(--g8); }
+.audio-drop-zone svg { color:var(--g4); }
+.audio-drop-zone p { font-size:13.5px; font-weight:500; color:var(--g2); margin:0; }
+.audio-drop-zone span { font-size:11.5px; color:var(--g4); }
+.audio-drop-zone.drag-over { border-color:var(--c-chat); background:#f5f3ff; }
+/* Selected file */
+.audio-sel-file { display:flex;align-items:center;gap:9px;padding:10px 12px;background:var(--g7);border:var(--border-md);border-radius:var(--r); }
+.audio-sel-file svg { color:var(--c-chat); flex-shrink:0; }
+.audio-sel-name { flex:1; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.audio-sel-clear { background:none;border:none;cursor:pointer;color:var(--g4);padding:3px;border-radius:5px;display:flex;align-items:center;transition:color .14s,background .14s; }
+.audio-sel-clear:hover { color:var(--black);background:var(--g5); }
+/* Recorder */
+.audio-recorder { display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0; }
+.rec-vis { display:flex;flex-direction:column;align-items:center;gap:8px;width:100%; }
+.rec-timer { font-family:var(--mono);font-size:22px;font-weight:700;letter-spacing:-.5px; }
+.rec-bars-wrap { display:flex;align-items:center;justify-content:center;gap:4px;height:36px;width:100%; }
+.rec-bar { width:5px;border-radius:3px;background:var(--c-chat);opacity:.3;transition:height .08s,opacity .08s; height:4px; }
+.rec-preview { width:100%;margin-top:2px; }
+.rec-preview audio { width:100%;outline:none; }
+.rec-controls { display:flex;gap:8px;width:100%; }
+.rec-btn { flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 14px;border-radius:var(--r);border:none;font-family:var(--font);font-size:12.5px;font-weight:500;cursor:pointer;transition:all .18s; }
+.rec-btn.rec-start { background:var(--c-chat);color:var(--white); }
+.rec-btn.rec-start:hover { background:#6d28d9;box-shadow:0 4px 14px rgba(124,58,237,.25); }
+.rec-btn.rec-stop { background:#e53935;color:var(--white); }
+.rec-btn.rec-stop:hover { background:#c62828; }
+.rec-btn.rec-clear { background:var(--g6);color:var(--g2);border:var(--border-md); }
+.rec-btn.rec-clear:hover { background:var(--g5);color:var(--black); }
+.rec-btn svg { width:14px;height:14px;flex-shrink:0; }
+</style>
+
+<div class="modal-bg" id="modal-audio" onclick="bgClose(event,'modal-audio')">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Audio Lectures</h3>
+      <p>Upload an audio file or record your voice — get a full AI-readable transcript.</p>
+    </div>
+
+    <!-- Tab switcher -->
+    <div class="audio-tabs">
+      <button class="atab active" id="atab-upload" onclick="switchAudioTab('upload')">Upload File</button>
+      <button class="atab" id="atab-record" onclick="switchAudioTab('record')">Record Voice</button>
+    </div>
+
+    <!-- Upload pane -->
+    <div id="audio-upload-pane">
+      <div class="audio-drop-zone" id="audio-drop-zone"
+           onclick="document.getElementById('audio-file-picker').click()"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="event.preventDefault();this.classList.remove('drag-over');onAudioDrop(event)">
+        <i data-lucide="upload-cloud" width="24" height="24"></i>
+        <p>Drop audio here or click to browse</p>
+        <span>MP3 · WAV · M4A · OGG · FLAC · WEBM &nbsp;(max 25 MB)</span>
+      </div>
+      <input type="file" id="audio-file-picker" accept=".mp3,.wav,.m4a,.ogg,.flac,.webm,audio/*"
+             style="display:none" onchange="onAudioFilePick(this)"/>
+      <div class="audio-sel-file" id="audio-sel-file" style="display:none">
+        <i data-lucide="file-audio-2" width="16" height="16"></i>
+        <span class="audio-sel-name" id="audio-sel-name"></span>
+        <button class="audio-sel-clear" onclick="clearAudioFile()">
+          <i data-lucide="x" width="12" height="12"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Record pane -->
+    <div id="audio-record-pane" style="display:none">
+      <div class="audio-recorder">
+        <div class="rec-vis">
+          <div class="rec-timer" id="rec-timer">0:00</div>
+          <div class="rec-bars-wrap" id="rec-bars-wrap">
+            <div class="rec-bar"></div><div class="rec-bar"></div>
+            <div class="rec-bar"></div><div class="rec-bar"></div>
+            <div class="rec-bar"></div><div class="rec-bar"></div>
+            <div class="rec-bar"></div>
+          </div>
+        </div>
+        <div class="rec-preview" id="rec-preview" style="display:none">
+          <audio id="rec-audio" controls></audio>
+        </div>
+        <div class="rec-controls">
+          <button class="rec-btn rec-start" id="rec-start-btn" onclick="startRecording()">
+            <i data-lucide="mic" width="14" height="14"></i> Start Recording
+          </button>
+          <button class="rec-btn rec-stop" id="rec-stop-btn" style="display:none" onclick="stopRecording()">
+            <i data-lucide="square" width="14" height="14"></i> Stop
+          </button>
+          <button class="rec-btn rec-clear" id="rec-clear-btn" style="display:none" onclick="clearRecording()">
+            <i data-lucide="trash-2" width="14" height="14"></i> Discard
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Title -->
+    <div class="mf" style="margin-top:14px">
+      <div>
+        <label>Session title</label>
+        <input class="minp" id="audio-title" placeholder="e.g. Physics Lecture — Wave Motion"/>
+      </div>
+    </div>
+
+    <div class="mactions">
+      <button class="mbtn mbtn-cancel" onclick="closeModal('modal-audio')">Cancel</button>
+      <button class="mbtn mbtn-go" id="audio-go-btn" onclick="doAudio()">Transcribe &amp; Study →</button>
     </div>
   </div>
 </div>

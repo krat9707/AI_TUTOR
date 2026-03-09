@@ -460,7 +460,7 @@ document.addEventListener('click', e => {
 ───────────────────────────────────────────── */
 document.addEventListener('keydown', e => {
   if(e.key!=='Escape') return;
-  ['modal-upload','modal-link','modal-paste','modal-topic'].forEach(id => {
+  ['modal-upload','modal-link','modal-paste','modal-topic','modal-audio'].forEach(id => {
     if(document.getElementById(id)?.classList.contains('is-open')) closeModal(id);
   });
   closeCtx();
@@ -558,3 +558,182 @@ document.addEventListener('click', e => {
   if (!_modelOpen) return;
   if (!document.getElementById('model-toggle')?.contains(e.target)) toggleModelMenu();
 });
+
+/* ─────────────────────────────────────────────
+   AUDIO LECTURES
+───────────────────────────────────────────── */
+let _selectedAudioFile = null;
+let _recordedBlob      = null;
+let _mediaRecorder     = null;
+let _audioChunks       = [];
+let _recTimerInterval  = null;
+let _recSeconds        = 0;
+let _recBarInterval    = null;
+
+function switchAudioTab(tab) {
+  document.getElementById('atab-upload').classList.toggle('active', tab === 'upload');
+  document.getElementById('atab-record').classList.toggle('active', tab === 'record');
+  document.getElementById('audio-upload-pane').style.display = tab === 'upload' ? '' : 'none';
+  document.getElementById('audio-record-pane').style.display = tab === 'record' ? '' : 'none';
+}
+
+function onAudioFilePick(inp) {
+  const f = inp.files[0]; if (!f) return;
+  _selectedAudioFile = f;
+  document.getElementById('audio-sel-name').textContent = f.name;
+  document.getElementById('audio-sel-file').style.display = 'flex';
+  document.getElementById('audio-drop-zone').style.display = 'none';
+  if (!document.getElementById('audio-title').value.trim())
+    document.getElementById('audio-title').value = f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+}
+
+function onAudioDrop(e) {
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  const ext = f.name.split('.').pop().toLowerCase();
+  if (!['mp3','wav','m4a','ogg','flac','webm','mp4'].includes(ext)) {
+    toast('Unsupported format. Use MP3, WAV, M4A, OGG, FLAC, or WEBM.'); return;
+  }
+  const picker = document.getElementById('audio-file-picker');
+  // Synthetic assignment for display only; store the File reference directly
+  _selectedAudioFile = f;
+  document.getElementById('audio-sel-name').textContent = f.name;
+  document.getElementById('audio-sel-file').style.display = 'flex';
+  document.getElementById('audio-drop-zone').style.display = 'none';
+  if (!document.getElementById('audio-title').value.trim())
+    document.getElementById('audio-title').value = f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+}
+
+function clearAudioFile() {
+  _selectedAudioFile = null;
+  document.getElementById('audio-file-picker').value = '';
+  document.getElementById('audio-sel-file').style.display = 'none';
+  document.getElementById('audio-drop-zone').style.display = '';
+}
+
+async function startRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    _audioChunks = [];
+    _recSeconds  = 0;
+    document.getElementById('rec-timer').textContent = '0:00';
+
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+
+    _mediaRecorder = new MediaRecorder(stream, { mimeType });
+    _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) _audioChunks.push(e.data); };
+    _mediaRecorder.onstop = () => {
+      _recordedBlob = new Blob(_audioChunks, { type: mimeType });
+      const url = URL.createObjectURL(_recordedBlob);
+      const aud = document.getElementById('rec-audio');
+      aud.src = url;
+      document.getElementById('rec-preview').style.display = '';
+      stream.getTracks().forEach(t => t.stop());
+    };
+    _mediaRecorder.start(200);
+
+    // UI
+    document.getElementById('rec-start-btn').style.display = 'none';
+    document.getElementById('rec-stop-btn').style.display  = '';
+    document.getElementById('rec-clear-btn').style.display = 'none';
+    document.getElementById('rec-preview').style.display   = 'none';
+
+    _recTimerInterval = setInterval(() => {
+      _recSeconds++;
+      const m = Math.floor(_recSeconds / 60), s = _recSeconds % 60;
+      document.getElementById('rec-timer').textContent = `${m}:${String(s).padStart(2,'0')}`;
+    }, 1000);
+
+    _animateRecBars(true);
+  } catch(err) {
+    toast('Microphone access denied — please allow microphone in browser settings.');
+  }
+}
+
+function stopRecording() {
+  if (_mediaRecorder && _mediaRecorder.state !== 'inactive') _mediaRecorder.stop();
+  clearInterval(_recTimerInterval);
+  _animateRecBars(false);
+  document.getElementById('rec-start-btn').style.display = '';
+  document.getElementById('rec-start-btn').innerHTML = '<i data-lucide="mic" width="14" height="14"></i> Record Again';
+  document.getElementById('rec-stop-btn').style.display  = 'none';
+  document.getElementById('rec-clear-btn').style.display = '';
+  lucide.createIcons();
+}
+
+function clearRecording() {
+  _recordedBlob = null; _audioChunks = []; _recSeconds = 0;
+  document.getElementById('rec-audio').src = '';
+  document.getElementById('rec-preview').style.display   = 'none';
+  document.getElementById('rec-clear-btn').style.display = 'none';
+  document.getElementById('rec-start-btn').style.display = '';
+  document.getElementById('rec-start-btn').innerHTML = '<i data-lucide="mic" width="14" height="14"></i> Start Recording';
+  document.getElementById('rec-timer').textContent = '0:00';
+  lucide.createIcons();
+}
+
+function _animateRecBars(on) {
+  const bars = document.querySelectorAll('.rec-bar');
+  clearInterval(_recBarInterval);
+  if (!on) { bars.forEach(b => { b.style.height = '4px'; b.style.opacity = '.3'; }); return; }
+  _recBarInterval = setInterval(() => {
+    bars.forEach(b => {
+      b.style.height  = (Math.random() * 28 + 4) + 'px';
+      b.style.opacity = (0.4 + Math.random() * 0.6).toFixed(2);
+    });
+  }, 90);
+}
+
+async function doAudio() {
+  const title  = document.getElementById('audio-title')?.value.trim() || 'Audio Lecture';
+  const isUploadTab = document.getElementById('audio-upload-pane')?.style.display !== 'none';
+  let audioFile = null;
+
+  if (isUploadTab) {
+    audioFile = _selectedAudioFile;
+    if (!audioFile) { toast('Please select an audio file first.'); return; }
+  } else {
+    if (!_recordedBlob) { toast('Please record audio first.'); return; }
+    const ext = _recordedBlob.type.includes('webm') ? 'webm'
+              : _recordedBlob.type.includes('ogg')  ? 'ogg' : 'webm';
+    audioFile = new File([_recordedBlob], `recording.${ext}`, { type: _recordedBlob.type });
+  }
+
+  const btn = document.getElementById('audio-go-btn');
+  btn.textContent = 'Processing…'; btn.disabled = true;
+  closeModal('modal-audio');
+  prog('Creating space…', 15);
+
+  const sd = await api('/api/session/create', {
+    topic: title, category: '', knowledge_level: 'intermediate',
+    learning_goal: '', time_available: '5-10 hrs/week',
+    learning_style: 'listening', content_type: 'audio'
+  });
+  if (!sd?.ok) { toast(sd?.error || 'Failed to create session.'); hideProg(); btn.textContent='Transcribe & Study →'; btn.disabled=false; return; }
+
+  prog('Transcribing audio with Voxtral…', 38);
+  try {
+    const fd = new FormData();
+    fd.append('audio', audioFile);
+    fd.append('title', title);
+    const res = await fetch(`/api/session/${sd.sid}/upload_audio`, { method: 'POST', body: fd });
+    const ud  = await res.json();
+    if (!ud.ok) {
+      toast(ud.error || 'Transcription failed. Check your Mistral API key.');
+      hideProg(); btn.textContent='Transcribe & Study →'; btn.disabled=false;
+      // Clean up orphan session
+      fetch(`/api/session/${sd.sid}/delete`, { method: 'DELETE' }).catch(()=>{});
+      return;
+    }
+    prog('Indexing…', 85);
+    await new Promise(r => setTimeout(r, 300));
+    prog('Done!', 100);
+    setTimeout(() => { hideProg(); location.href = `/session/${sd.sid}`; }, 500);
+  } catch(e) {
+    toast('Network error during transcription.');
+    hideProg();
+  }
+  btn.textContent = 'Transcribe & Study →'; btn.disabled = false;
+}
