@@ -95,7 +95,8 @@ body {
 .sidebar-close  { width:28px; height:28px; border-radius:8px; border:none; background:none; cursor:pointer; color:var(--g4); display:flex; align-items:center; justify-content:center; transition:background .13s,color .13s; }
 .sidebar-close:hover { background:var(--g7); color:var(--black); }
 
-.sidebar-user       { display:flex; align-items:center; gap:11px; padding:15px 18px; border-bottom:var(--border); }
+.sidebar-user       { display:flex; align-items:center; gap:11px; padding:15px 18px; border-bottom:var(--border); transition:background .12s; cursor:pointer; }
+.sidebar-user:hover { background:var(--g8); }
 .sidebar-avatar     { width:34px; height:34px; border-radius:10px; background:var(--black); color:var(--white); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; flex-shrink:0; }
 .sidebar-user-name  { font-size:13px; font-weight:600; }
 .sidebar-user-email { font-size:11px; color:var(--g4); margin-top:2px; }

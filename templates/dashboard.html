@@ -30,16 +30,22 @@
       <i data-lucide="x" width="15" height="15"></i>
     </button>
   </div>
-  <div class="sidebar-user">
+  <a href="/profile" class="sidebar-user" style="text-decoration:none;color:inherit;">
     <div class="sidebar-avatar">{{ (user.full_name or user.username)[0].upper() }}</div>
     <div class="sidebar-user-info">
       <div class="sidebar-user-name">{{ user.full_name or user.username }}</div>
       <div class="sidebar-user-email">{{ user.email or 'Student' }}</div>
     </div>
-  </div>
+  </a>
   <nav class="sidebar-nav">
     <a href="/dashboard" class="sidebar-link active">
       <i data-lucide="layout-dashboard" width="14" height="14"></i>Dashboard
+    </a>
+    <a href="/history" class="sidebar-link">
+      <i data-lucide="clock" width="14" height="14"></i>History
+    </a>
+    <a href="/profile" class="sidebar-link">
+      <i data-lucide="user" width="14" height="14"></i>Profile
     </a>
     <a href="/" class="sidebar-link">
       <i data-lucide="home" width="14" height="14"></i>Home
