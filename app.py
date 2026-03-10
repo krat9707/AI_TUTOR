@@ -2,8 +2,9 @@
 StudyAI — Flask Application
 """
 
-import os, json, uuid, threading
+import os, json, uuid, threading, secrets
 from datetime import datetime
+from urllib.parse import urlencode
 from flask import (Flask, render_template, request, jsonify, session,
                    redirect, url_for, send_from_directory)
 from flask_sqlalchemy import SQLAlchemy
@@ -15,6 +16,11 @@ from functools import wraps
 from agent_handler import StudyAssistantHandler
 
 load_dotenv()
+
+# ── Google OAuth config ────────────────────────────────────────────────────────
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/google/callback")
 
 # ── App setup ──────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -35,6 +41,7 @@ class User(db.Model):
     username    = db.Column(db.String(80),  unique=True, nullable=False)
     email       = db.Column(db.String(120), unique=True, nullable=False)
     password    = db.Column(db.String(256), nullable=False)
+    google_id   = db.Column(db.String(100), unique=True, nullable=True)
     full_name   = db.Column(db.String(120), default="")
     avatar_seed = db.Column(db.String(40),  default="")
     pref_model_id = db.Column(db.String(40), default="groq_llama")  # active model
@@ -457,7 +464,11 @@ def api_login():
     password   = data.get("password", "")
     u = (User.query.filter_by(username=identifier).first() or
          User.query.filter_by(email=identifier).first())
-    if not u or not check_password_hash(u.password, password):
+    if not u:
+        return jsonify({"error": "Invalid credentials"}), 401
+    if not u.password:
+        return jsonify({"error": "This account uses Google sign-in. Please click 'Continue with Google'."}), 401
+    if not check_password_hash(u.password, password):
         return jsonify({"error": "Invalid credentials"}), 401
     session["user_id"] = u.id
     return jsonify({"ok": True, "redirect": "/dashboard"})
@@ -466,6 +477,93 @@ def api_login():
 def api_logout():
     session.clear()
     return jsonify({"ok": True, "redirect": "/"})
+
+# ── Google OAuth ────────────────────────────────────────────────────────────────
+@app.route("/auth/google")
+def google_login():
+    if not GOOGLE_CLIENT_ID:
+        return "Google OAuth is not configured.", 500
+    state = secrets.token_urlsafe(32)
+    session["oauth_state"] = state
+    params = {
+        "client_id":     GOOGLE_CLIENT_ID,
+        "redirect_uri":  GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope":         "openid email profile",
+        "state":         state,
+        "access_type":   "online",
+    }
+    return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params))
+
+@app.route("/auth/google/callback")
+def google_callback():
+    import requests as req
+
+    # ── CSRF guard ─────────────────────────────────────────────────────────────
+    if request.args.get("state") != session.pop("oauth_state", None):
+        return redirect(url_for("login_page"))
+
+    error = request.args.get("error")
+    if error:
+        return redirect(url_for("login_page"))
+
+    code = request.args.get("code")
+    if not code:
+        return redirect(url_for("login_page"))
+
+    # ── Exchange code for tokens ────────────────────────────────────────────────
+    token_resp = req.post("https://oauth2.googleapis.com/token", data={
+        "code":          code,
+        "client_id":     GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri":  GOOGLE_REDIRECT_URI,
+        "grant_type":    "authorization_code",
+    }, timeout=10)
+    if not token_resp.ok:
+        return redirect(url_for("login_page"))
+    access_token = token_resp.json().get("access_token")
+
+    # ── Fetch Google user info ─────────────────────────────────────────────────
+    info_resp = req.get("https://www.googleapis.com/oauth2/v3/userinfo",
+                        headers={"Authorization": f"Bearer {access_token}"}, timeout=10)
+    if not info_resp.ok:
+        return redirect(url_for("login_page"))
+    ginfo     = info_resp.json()
+    google_id = ginfo.get("sub")
+    email     = (ginfo.get("email") or "").lower()
+    full_name = ginfo.get("name", "")
+
+    if not google_id or not email:
+        return redirect(url_for("login_page"))
+
+    # ── Find or create user ────────────────────────────────────────────────────
+    u = User.query.filter_by(google_id=google_id).first()
+    if not u:
+        # Link to existing account with the same email
+        u = User.query.filter_by(email=email).first()
+        if u:
+            u.google_id = google_id
+        else:
+            # Create a new account
+            base = email.split("@")[0]
+            username = base
+            counter  = 1
+            while User.query.filter_by(username=username).first():
+                username = f"{base}{counter}"
+                counter += 1
+            u = User(
+                username    = username,
+                email       = email,
+                password    = "",
+                google_id   = google_id,
+                full_name   = full_name,
+                avatar_seed = (full_name[:2] or username[:2]).upper(),
+            )
+            db.session.add(u)
+        db.session.commit()
+
+    session["user_id"] = u.id
+    return redirect(url_for("dashboard"))
 
 @app.route("/api/auth/update_profile", methods=["POST"])
 @login_required
