@@ -83,11 +83,16 @@ def _open_browser(port: int):
 if __name__ == "__main__":
     PORT  = int(os.getenv("PORT", 5000))
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    IS_LOCAL = os.getenv("RAILWAY_ENVIRONMENT") is None
 
-    kill_port(PORT)
+    if IS_LOCAL:
+        kill_port(PORT)
 
-    from startup import ensure_packages
-    ensure_packages()
+    if not IS_LOCAL and not DEBUG:
+        print("⚠️   Running in production mode on a non-local environment. Ensure your deployment platform handles port conflicts appropriately.")
+    elif IS_LOCAL:   
+        from startup import ensure_packages
+        ensure_packages()
 
     from app import app
 
@@ -102,7 +107,7 @@ if __name__ == "__main__":
 ╚══════════════════════════════════════════════════════╝
 """)
 
-    if not DEBUG:
+    if IS_LOCAL and not DEBUG:
         threading.Thread(target=_open_browser, args=(PORT,), daemon=True).start()
 
     app.run(host="0.0.0.0", port=PORT, debug=DEBUG,
