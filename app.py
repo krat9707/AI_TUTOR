@@ -212,7 +212,7 @@ def dashboard():
     sessions = (StudySession.query
                 .filter_by(user_id=u.id)
                 .order_by(StudySession.created_at.desc())
-                .limit(6).all())
+                .limit(10).all())
     from providers import available_models
     models = available_models()
     return render_template("dashboard.html", user=u, models=models, sessions=sessions)
