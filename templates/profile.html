@@ -425,6 +425,34 @@
       .stats-row { grid-template-columns: repeat(2, 1fr); }
       .page { padding: 24px 16px 60px; }
     }
+
+    /* ── AVATAR UPLOAD ───────────────────────────────────────── */
+    .avatar-upload-preview {
+      width: 68px; height: 68px;
+      border-radius: 16px;
+      background: var(--g7);
+      border: var(--border-md);
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+      cursor: pointer;
+      transition: box-shadow .15s, border-color .15s;
+      flex-shrink: 0;
+      color: var(--g3);
+    }
+    .avatar-upload-preview:hover {
+      border-color: rgba(0,0,0,.2);
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+    .btn-choose-photo {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      border-radius: var(--r);
+      background: var(--g7); border: var(--border-md);
+      color: var(--g2); cursor: pointer;
+      font-family: var(--font); font-size: 12.5px; font-weight: 500;
+      transition: background .12s, border-color .12s;
+    }
+    .btn-choose-photo:hover { background: var(--g6); border-color: rgba(0,0,0,.15); }
   </style>
 </head>
 <body>
@@ -435,7 +463,13 @@
     <a href="/" class="sidebar-logo">StudyAI</a>
   </div>
   <div class="sidebar-user">
-    <div class="sidebar-avatar">{{ (user.full_name or user.username)[0].upper() }}</div>
+    <div class="sidebar-avatar" id="sidebar-avatar-el">
+      {% if user.avatar_url %}
+      <img src="{{ url_for('static', filename=user.avatar_url) }}" alt="Profile photo" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" />
+      {% else %}
+      {{ (user.full_name or user.username)[0].upper() }}
+      {% endif %}
+    </div>
     <div>
       <div class="sidebar-user-name">{{ user.full_name or user.username }}</div>
       <div class="sidebar-user-email">{{ user.email or 'Student' }}</div>
@@ -480,7 +514,13 @@
 
     <!-- Profile Banner -->
     <div class="profile-banner" id="profile-banner">
-      <div class="pb-avatar">{{ (user.full_name or user.username)[0].upper() }}</div>
+      <div class="pb-avatar" id="pb-avatar-el">
+        {% if user.avatar_url %}
+        <img src="{{ url_for('static', filename=user.avatar_url) }}" alt="Profile photo" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" />
+        {% else %}
+        {{ (user.full_name or user.username)[0].upper() }}
+        {% endif %}
+      </div>
       <div class="pb-info">
         <div class="pb-name">{{ user.full_name or user.username }}</div>
         <div class="pb-email">{{ user.email }}</div>
@@ -515,6 +555,36 @@
 
       <div class="msg err" id="prof-err"></div>
       <div class="msg ok"  id="prof-ok"></div>
+
+      <div class="field">
+        <label class="field-label">Profile Photo</label>
+        <div style="display:flex;align-items:center;gap:16px;margin-top:4px;">
+          <div class="avatar-upload-preview" id="avatar-upload-preview"
+               onclick="document.getElementById('avatar-file-input').click()"
+               title="Click to change photo">
+            {% if user.avatar_url %}
+            <img src="{{ url_for('static', filename=user.avatar_url) }}" alt="Preview"
+                 style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" />
+            {% else %}
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            {% endif %}
+          </div>
+          <div>
+            <button type="button" class="btn-choose-photo"
+                    onclick="document.getElementById('avatar-file-input').click()">
+              <i data-lucide="upload" width="13" height="13"></i>
+              Upload photo
+            </button>
+            <div style="font-size:11px;color:var(--g4);margin-top:6px;">JPG, PNG, GIF or WEBP · max 5 MB</div>
+          </div>
+          <input type="file" id="avatar-file-input" accept=".jpg,.jpeg,.png,.gif,.webp,image/*"
+                 style="display:none" onchange="onAvatarFilePick(this)" />
+        </div>
+      </div>
 
       <div class="field">
         <label class="field-label">Full Name</label>
@@ -599,6 +669,37 @@
         { opacity: 0, y: 12 },
         { opacity: 1, y: 0, duration: .35, stagger: .08 }, .38);
   });
+
+  /* ── Avatar Upload ── */
+  function onAvatarFilePick(input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      showMsg('prof-err', 'File too large — max 5 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const imgHtml = `<img src="${e.target.result}" alt="Preview" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" />`;
+      document.getElementById('avatar-upload-preview').innerHTML = imgHtml;
+      document.getElementById('pb-avatar-el').innerHTML = imgHtml;
+      document.getElementById('sidebar-avatar-el').innerHTML = imgHtml;
+    };
+    reader.readAsDataURL(file);
+    uploadAvatar(file);
+  }
+
+  async function uploadAvatar(file) {
+    const fd = new FormData();
+    fd.append('avatar', file);
+    const r = await fetch('/api/auth/upload_avatar', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d.ok) {
+      showToast('Photo updated ✓');
+    } else {
+      showMsg('prof-err', d.error || 'Upload failed.');
+    }
+  }
 
   /* ── Profile ── */
   async function saveProfile() {

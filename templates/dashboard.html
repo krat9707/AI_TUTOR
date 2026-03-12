@@ -465,7 +465,11 @@
     <!-- Avatar -->
     <div class="w-full mb-8">
       <div class="relative w-12 h-12 group-hover/sidebar:w-full group-hover/sidebar:h-64 transition-all duration-500 overflow-hidden rounded-2xl avatar-surface flex items-center justify-center">
-        {% if user.full_name or user.username %}
+        {% if user.avatar_url %}
+        <img src="{{ url_for('static', filename=user.avatar_url) }}"
+             alt="Profile photo"
+             class="w-full h-full object-cover" />
+        {% elif user.full_name or user.username %}
         <span class="font-condensed text-5xl tracking-wider transition-all duration-500 group-hover/sidebar:text-8xl select-none"
               style="background: var(--color-primary); color: var(--color-bg); width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
           {{ (user.full_name or user.username)[0].upper() }}
@@ -476,7 +480,7 @@
 
     <!-- Nav -->
     <nav class="flex flex-col gap-8 w-full items-start px-2">
-      <a class="nav-link flex items-center gap-6 transition-colors group" href="/dashboard">
+      <a class="nav-link flex items-center gap-6 transition-colors group" href="/">
         <span class="material-symbols-outlined shrink-0 text-2xl">home</span>
         <span class="sidebar-text font-condensed text-xl tracking-[0.2em] uppercase">Home</span>
       </a>

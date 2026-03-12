@@ -44,6 +44,7 @@ class User(db.Model):
     google_id   = db.Column(db.String(100), unique=True, nullable=True)
     full_name   = db.Column(db.String(120), default="")
     avatar_seed = db.Column(db.String(40),  default="")
+    avatar_url  = db.Column(db.String(200), default="")  # relative path e.g. avatars/uid.jpg
     pref_model_id = db.Column(db.String(40), default="groq_llama")  # active model
     created_at  = db.Column(db.DateTime,    default=datetime.utcnow)
     sessions    = db.relationship("StudySession", backref="user", lazy=True,
@@ -583,6 +584,33 @@ def api_update_profile():
         u.password = generate_password_hash(new_pw)
     db.session.commit()
     return jsonify({"ok": True})
+
+@app.route("/api/auth/upload_avatar", methods=["POST"])
+@login_required
+def api_upload_avatar():
+    u = current_user()
+    if "avatar" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    f = request.files["avatar"]
+    if not f.filename:
+        return jsonify({"error": "No file selected"}), 400
+    ext = f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in {"jpg", "jpeg", "png", "gif", "webp"}:
+        return jsonify({"error": "Only JPG, PNG, GIF, WEBP allowed"}), 400
+    avatars_dir = os.path.join(app.root_path, "static", "avatars")
+    os.makedirs(avatars_dir, exist_ok=True)
+    filename = secure_filename(f"{u.uid}.{ext}")
+    # Remove any previous avatar file for this user (different extension)
+    for old in os.listdir(avatars_dir):
+        if old.startswith(f"{u.uid}.") and old != filename:
+            try:
+                os.remove(os.path.join(avatars_dir, old))
+            except OSError:
+                pass
+    f.save(os.path.join(avatars_dir, filename))
+    u.avatar_url = f"avatars/{filename}"
+    db.session.commit()
+    return jsonify({"ok": True, "avatar_url": u.avatar_url})
 
 # ── Session API ────────────────────────────────────────────────────────────────
 @app.route("/api/session/create", methods=["POST"])
