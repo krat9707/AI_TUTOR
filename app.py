@@ -452,7 +452,7 @@ def api_register():
     u = User(username=username, email=email,
              password=generate_password_hash(password),
              full_name=full_name,
-             avatar_seed=username[:2].upper())
+             avatar_seed=str(uuid.uuid4()))
     db.session.add(u)
     db.session.commit()
     session["user_id"] = u.id
@@ -558,7 +558,7 @@ def google_callback():
                 password    = "",
                 google_id   = google_id,
                 full_name   = full_name,
-                avatar_seed = (full_name[:2] or username[:2]).upper(),
+                avatar_seed = str(uuid.uuid4()),
             )
             db.session.add(u)
         db.session.commit()

@@ -469,11 +469,10 @@
         <img src="{{ url_for('static', filename=user.avatar_url) }}"
              alt="Profile photo"
              class="w-full h-full object-cover" />
-        {% elif user.full_name or user.username %}
-        <span class="font-condensed text-5xl tracking-wider transition-all duration-500 group-hover/sidebar:text-8xl select-none"
-              style="background: var(--color-primary); color: var(--color-bg); width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
-          {{ (user.full_name or user.username)[0].upper() }}
-        </span>
+        {% else %}
+        <img src="https://api.dicebear.com/9.x/adventurer-neutral/svg?seed={{ user.avatar_seed or user.uid }}"
+             alt="Avatar"
+             class="w-full h-full object-cover" />
         {% endif %}
       </div>
     </div>
@@ -619,8 +618,8 @@
             <div class="divider"></div>
             <a href="/history" class="label label--muted hover:opacity-100 transition-opacity" style="letter-spacing:0.2em; white-space:nowrap;">View All</a>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {% for s in sessions[:2] %}
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8" id="jbi-grid">
+            {% for s in sessions %}
             {% set ct = s.content_type or 'topic' %}
             {% set yt_id = s.youtube_id or '' %}
             {% if not yt_id and ct == 'youtube' and s.youtube_url %}
@@ -628,7 +627,7 @@
               {% elif 'youtu.be/' in s.youtube_url %}{% set yt_id = s.youtube_url.split('youtu.be/')[1].split('?')[0] %}{% endif %}
             {% endif %}
 
-            <a href="/session/{{ s.sid }}" class="block group card surface surface--interactive cursor-pointer relative" data-sid="{{ s.sid }}">
+            <a href="/session/{{ s.sid }}" class="block group card surface surface--interactive cursor-pointer relative{% if loop.index0 >= 2 %} jbi-extra{% endif %}" data-sid="{{ s.sid }}"{% if loop.index0 >= 2 %} style="display:none;"{% endif %}>
               <!-- Delete button -->
               <button class="card-delete-btn" onclick="deleteCard(event,'{{ s.sid }}')" title="Delete">
                 <span class="material-symbols-outlined" style="font-size:14px;">close</span>
@@ -744,7 +743,7 @@
             {% else %}Topic{% endif %}
           {% endset %}
 
-          <div class="relative flex items-center justify-center mb-12">
+          <div class="relative flex items-center justify-center mb-12" data-tl-sid="{{ s.sid }}">
             <div class="timeline__dot {{ dot_class }}"></div>
             <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-12">
               {% if is_right %}
@@ -811,7 +810,7 @@
       <div class="flex gap-8">
         <div class="flex items-center gap-2 group cursor-pointer">
           <div class="status-dot status-dot--active"></div>
-          <span class="label label--muted footer-link" style="letter-spacing:0.3em;">Neural Sync Active</span>
+          <span class="label label--muted footer-link" style="letter-spacing:0.3em;">User Online</span>
         </div>
         <a href="/profile" class="label label--muted footer-link cursor-pointer" style="letter-spacing:0.3em;">Profile</a>
         <a href="/history" class="label label--muted footer-link cursor-pointer" style="letter-spacing:0.3em;">Session Log</a>

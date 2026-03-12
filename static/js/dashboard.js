@@ -246,15 +246,42 @@ async function deleteCard(e, sid) {
       if (typeof gsap !== 'undefined') {
         gsap.to(card, {
           opacity: 0, scale: 0.92, y: -8, duration: 0.26, ease: 'power2.in',
-          onComplete: () => card.remove()
+          onComplete: () => { card.remove(); _jbiRevealNext(); }
         });
       } else {
         card.remove();
+        _jbiRevealNext();
       }
     }
+    _removeTimelineEntry(sid);
     toast('Deleted.');
   } else {
     toast('Delete failed.');
+  }
+}
+
+function _jbiRevealNext() {
+  const grid = document.getElementById('jbi-grid');
+  if (!grid) return;
+  if (grid.querySelectorAll('a:not(.jbi-extra)').length < 2) {
+    const next = grid.querySelector('a.jbi-extra');
+    if (next) {
+      next.classList.remove('jbi-extra');
+      next.style.display = '';
+      if (typeof gsap !== 'undefined') {
+        gsap.fromTo(next, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: 'power2.out' });
+      }
+    }
+  }
+}
+
+function _removeTimelineEntry(sid) {
+  const entry = document.querySelector(`[data-tl-sid="${sid}"]`);
+  if (!entry) return;
+  if (typeof gsap !== 'undefined') {
+    gsap.to(entry, { opacity: 0, duration: 0.25, ease: 'power2.in', onComplete: () => entry.remove() });
+  } else {
+    entry.remove();
   }
 }
 
@@ -291,9 +318,10 @@ async function ctxDelete() {
     const el = document.querySelector(`[data-sid="${sid}"]`);
     if (el) {
       if (typeof gsap !== 'undefined') {
-        gsap.to(el, { opacity: 0, scale: 0.9, duration: 0.26, ease: 'power2.in', onComplete: () => el.remove() });
-      } else { el.remove(); }
+        gsap.to(el, { opacity: 0, scale: 0.9, duration: 0.26, ease: 'power2.in', onComplete: () => { el.remove(); _jbiRevealNext(); } });
+      } else { el.remove(); _jbiRevealNext(); }
     }
+    _removeTimelineEntry(sid);
     toast('Deleted.');
   }
 }
