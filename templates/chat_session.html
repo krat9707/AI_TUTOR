@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>{{ session.topic or 'Chat' }} — StudyAI</title>
+  <title>{{ session.topic or 'Chat' }} — Axiom</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/chat_session.css') }}"/>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -22,7 +22,7 @@
   <!-- TOPBAR -->
   <header class="topbar">
     <a href="/dashboard" class="tb-btn"><i data-lucide="arrow-left"></i></a>
-    <a href="/" class="tb-logo">StudyAI</a>
+    <a href="/" class="tb-logo">Axiom</a>
     <div class="tb-sep"></div>
     <span class="tb-name">{{ session.topic or 'Chat Session' }}</span>
     <span class="tb-badge"><i data-lucide="message-circle"></i> Chat</span>

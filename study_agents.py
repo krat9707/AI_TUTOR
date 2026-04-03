@@ -1,5 +1,5 @@
 """
-StudyAI — Study Agents
+Axiom — Study Agents
 """
 
 import os

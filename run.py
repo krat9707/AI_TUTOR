@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-StudyAI — Launcher
+Axiom — Launcher
 Automatically kills anything on the target port before starting Flask.
 """
 
@@ -98,7 +98,7 @@ if __name__ == "__main__":
 
     print(f"""
 ╔══════════════════════════════════════════════════════╗
-║   🎓  StudyAI — Multi-Agent Learning Platform        ║
+║   🎓  Axiom — Multi-Agent Learning Platform        ║
 ╠══════════════════════════════════════════════════════╣
 ║   🌐  http://localhost:{PORT:<28}                    ║
 ║   🔧  Debug mode : {str(DEBUG):<32}                  ║

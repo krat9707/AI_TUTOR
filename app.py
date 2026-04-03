@@ -1,5 +1,5 @@
 """
-StudyAI — Flask Application
+Axiom — Flask Application
 """
 
 import os, json, uuid, threading, secrets
@@ -25,7 +25,7 @@ GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5000/a
 # ── App setup ──────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", os.urandom(32).hex())
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///studyai.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///axiom.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = "./uploads"
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB

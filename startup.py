@@ -1,5 +1,5 @@
 """
-StudyAI — Startup
+Axiom — Startup
 Runs before Flask starts:
   1. Auto-installs packages that may not persist across Replit restarts
 """

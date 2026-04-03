@@ -1,5 +1,5 @@
 """
-StudyAI — RAG Helper
+Axiom — RAG Helper
 Semantic search via Mistral codestral-embed with:
   - Parallel batch embedding  (ThreadPoolExecutor, ~15x faster than serial)
   - Disk cache               (uploads/{sid}.npz — instant on restart)

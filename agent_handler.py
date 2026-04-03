@@ -1,5 +1,5 @@
 """
-StudyAI — Agent Handler
+Axiom — Agent Handler
 All AI methods live here. Talks to StudyAgents for model/agent construction
 and to RAGHelper for document retrieval.
 """

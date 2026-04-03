@@ -1,5 +1,5 @@
 """
-StudyAI — Provider & Model Registry
+Axiom — Provider & Model Registry
 """
 
 import os, logging

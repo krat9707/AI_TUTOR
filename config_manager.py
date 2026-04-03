@@ -1,5 +1,5 @@
 """
-StudyAI — ConfigManager
+Axiom — ConfigManager
 Loads prompts.yaml and exposes helpers used by the Flask app and agents.
 """
 import yaml

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StudyAI | Dashboard</title>
+  <title>Axiom | Dashboard</title>
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700&family=Bebas+Neue&family=Playfair+Display:ital,wght@0,400;1,400&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
@@ -538,7 +538,7 @@
         <div class="icon-badge icon-badge--solid icon-badge--sm rounded-lg">
           <span class="material-symbols-outlined text-2xl">auto_awesome</span>
         </div>
-        <h1 class="topbar-title font-condensed text-4xl tracking-widest">STUDYAI</h1>
+        <h1 class="topbar-title font-condensed text-4xl tracking-widest">AXIOM</h1>
       </div>
       <div class="flex items-center gap-4">
         <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">
@@ -806,7 +806,7 @@
 
     <!-- Footer -->
     <footer class="w-full max-w-7xl px-8 py-12 flex flex-col md:flex-row justify-between items-center footer-border border-t gap-6">
-      <div class="label label--muted" style="letter-spacing:0.4em;">© 2024 StudyAI Systems</div>
+      <div class="label label--muted" style="letter-spacing:0.4em;">© 2024 Axiom Systems</div>
       <div class="flex gap-8">
         <div class="flex items-center gap-2 group cursor-pointer">
           <div class="status-dot status-dot--active"></div>
@@ -851,7 +851,7 @@
 
   <div class="modal-bg" id="modal-paste" onclick="bgClose(event,'modal-paste')">
     <div class="modal">
-      <div class="modal-head"><h3>Paste text</h3><p>Paste any text and StudyAI makes it interactive.</p></div>
+      <div class="modal-head"><h3>Paste text</h3><p>Paste any text and Axiom makes it interactive.</p></div>
       <div class="mf">
         <div><label>Title</label><input class="minp" id="paste-title" placeholder="Give this a name…"/></div>
         <div><label>Content</label><textarea class="mtxt" id="paste-text" placeholder="Paste your text here…"></textarea></div>
@@ -1158,7 +1158,7 @@
 
   <!-- ─── CONFIG (Jinja2 vars → JS globals) ─── -->
   <script>
-    window.STUDYAI_PREF_MODEL = "{{ user.pref_model_id or '' }}";
+    window.AXIOM_PREF_MODEL = "{{ user.pref_model_id or '' }}";
   </script>
 
   <!-- ─── MAIN JS ─── -->
