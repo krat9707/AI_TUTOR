@@ -1,0 +1,290 @@
+/* ── Markdown rendering styles (used by marked.js output) ──────────────── */
+/* Targets AI response containers: .msg-bub, .sum-body, .output-card,
+   .bubble-ai, .explain-body, .chat-bubble.ai, .ocr-content              */
+
+.msg-bub h1, .msg-bub h2, .msg-bub h3, .msg-bub h4, .msg-bub h5, .msg-bub h6,
+.sum-body h1, .sum-body h2, .sum-body h3, .sum-body h4, .sum-body h5, .sum-body h6,
+.output-card h1, .output-card h2, .output-card h3, .output-card h4, .output-card h5, .output-card h6,
+.bubble-ai h1, .bubble-ai h2, .bubble-ai h3, .bubble-ai h4, .bubble-ai h5, .bubble-ai h6,
+.explain-body h1, .explain-body h2, .explain-body h3, .explain-body h4, .explain-body h5, .explain-body h6,
+.chat-bubble.ai h1, .chat-bubble.ai h2, .chat-bubble.ai h3, .chat-bubble.ai h4, .chat-bubble.ai h5, .chat-bubble.ai h6 {
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  line-height: 1.4;
+  margin-top: 16px;
+  margin-bottom: 6px;
+  color: var(--black, #0a0a0a);
+}
+
+.msg-bub h1, .sum-body h1, .output-card h1, .bubble-ai h1, .explain-body h1, .chat-bubble.ai h1 {
+  font-size: 17px; margin-top: 18px; letter-spacing: -0.3px;
+}
+.msg-bub h2, .sum-body h2, .output-card h2, .bubble-ai h2, .explain-body h2, .chat-bubble.ai h2 {
+  font-size: 15px; margin-top: 16px;
+}
+.msg-bub h3, .sum-body h3, .output-card h3, .bubble-ai h3, .explain-body h3, .chat-bubble.ai h3 {
+  font-size: 14px; margin-top: 14px;
+}
+.msg-bub h4, .sum-body h4, .output-card h4, .bubble-ai h4, .explain-body h4, .chat-bubble.ai h4 {
+  font-size: 13px; margin-top: 12px;
+}
+.msg-bub h5, .msg-bub h6, .sum-body h5, .sum-body h6, .output-card h5, .output-card h6,
+.bubble-ai h5, .bubble-ai h6, .explain-body h5, .explain-body h6,
+.chat-bubble.ai h5, .chat-bubble.ai h6 {
+  font-size: 12.5px; margin-top: 10px;
+}
+
+/* First heading — no top margin */
+.msg-bub > :first-child, .sum-body > :first-child, .output-card > :first-child,
+.bubble-ai > :first-child, .explain-body > :first-child, .chat-bubble.ai > :first-child {
+  margin-top: 0;
+}
+/* Last child — no bottom margin */
+.msg-bub > :last-child, .sum-body > :last-child, .output-card > :last-child,
+.bubble-ai > :last-child, .explain-body > :last-child, .chat-bubble.ai > :last-child {
+  margin-bottom: 0;
+}
+
+/* ── Paragraphs ── */
+.msg-bub p, .sum-body p, .output-card p, .bubble-ai p, .explain-body p, .chat-bubble.ai p {
+  margin: 5px 0;
+  line-height: 1.75;
+}
+
+/* ── Lists ── */
+.msg-bub ul, .msg-bub ol, .sum-body ul, .sum-body ol,
+.output-card ul, .output-card ol, .bubble-ai ul, .bubble-ai ol,
+.explain-body ul, .explain-body ol, .chat-bubble.ai ul, .chat-bubble.ai ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+.msg-bub li, .sum-body li, .output-card li, .bubble-ai li, .explain-body li, .chat-bubble.ai li {
+  margin: 3px 0;
+  line-height: 1.65;
+}
+/* Nested lists */
+.msg-bub li ul, .msg-bub li ol, .sum-body li ul, .sum-body li ol,
+.output-card li ul, .output-card li ol, .bubble-ai li ul, .bubble-ai li ol,
+.explain-body li ul, .explain-body li ol, .chat-bubble.ai li ul, .chat-bubble.ai li ol {
+  margin: 2px 0;
+}
+
+/* ── Inline code ── */
+.msg-bub code, .sum-body code, .output-card code, .bubble-ai code,
+.explain-body code, .chat-bubble.ai code {
+  background: rgba(0,0,0,0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'DM Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+/* ── Code blocks ── */
+.msg-bub pre, .sum-body pre, .output-card pre, .bubble-ai pre,
+.explain-body pre, .chat-bubble.ai pre {
+  background: rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.msg-bub pre code, .sum-body pre code, .output-card pre code, .bubble-ai pre code,
+.explain-body pre code, .chat-bubble.ai pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+/* Dark user bubble adjustments */
+.msg.user .msg-bub code { background: rgba(255,255,255,0.15); }
+.msg.user .msg-bub pre { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); }
+
+/* ── Blockquotes ── */
+.msg-bub blockquote, .sum-body blockquote, .output-card blockquote,
+.bubble-ai blockquote, .explain-body blockquote, .chat-bubble.ai blockquote {
+  border-left: 3px solid var(--g4, #b0b0b0);
+  margin: 8px 0;
+  padding: 6px 12px;
+  color: var(--g3, #7a7a7a);
+  font-style: italic;
+  background: rgba(0,0,0,0.02);
+  border-radius: 0 6px 6px 0;
+}
+.msg-bub blockquote p, .sum-body blockquote p, .output-card blockquote p,
+.bubble-ai blockquote p, .explain-body blockquote p, .chat-bubble.ai blockquote p {
+  margin: 2px 0;
+}
+
+/* ── Tables ── */
+.msg-bub table, .sum-body table, .output-card table, .bubble-ai table,
+.explain-body table, .chat-bubble.ai table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 12.5px;
+}
+.msg-bub th, .msg-bub td, .sum-body th, .sum-body td,
+.output-card th, .output-card td, .bubble-ai th, .bubble-ai td,
+.explain-body th, .explain-body td, .chat-bubble.ai th, .chat-bubble.ai td {
+  border: 1px solid var(--g5, #e2e2e2);
+  padding: 7px 10px;
+  text-align: left;
+}
+.msg-bub th, .sum-body th, .output-card th, .bubble-ai th,
+.explain-body th, .chat-bubble.ai th {
+  background: var(--g7, #f7f7f7);
+  font-weight: 600;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--g3, #7a7a7a);
+}
+
+/* ── Horizontal rule ── */
+.msg-bub hr, .sum-body hr, .output-card hr, .bubble-ai hr,
+.explain-body hr, .chat-bubble.ai hr {
+  border: none;
+  border-top: 1px solid var(--g5, #e2e2e2);
+  margin: 10px 0;
+}
+
+/* ── Links ── */
+.msg-bub a, .sum-body a, .output-card a, .bubble-ai a,
+.explain-body a, .chat-bubble.ai a {
+  color: #1a6eff;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(26,110,255,0.2);
+  transition: border-color 0.15s;
+}
+.msg-bub a:hover, .sum-body a:hover, .output-card a:hover, .bubble-ai a:hover,
+.explain-body a:hover, .chat-bubble.ai a:hover {
+  border-bottom-color: #1a6eff;
+}
+
+/* ── Strong / Em ── */
+.msg-bub strong, .sum-body strong, .output-card strong, .bubble-ai strong,
+.explain-body strong, .chat-bubble.ai strong {
+  font-weight: 600;
+}
+
+/* ── Images (if any) ── */
+.msg-bub img, .sum-body img, .output-card img, .bubble-ai img,
+.explain-body img, .chat-bubble.ai img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 6px 0;
+}
+
+/* ── Notes Write/Preview toggle ── */
+.notes-mode-tabs {
+  display: flex;
+  gap: 2px;
+  margin-right: auto;
+}
+.notes-mode {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--g4, #b0b0b0);
+  transition: all 0.15s;
+}
+.notes-mode:hover {
+  color: var(--g2, #3a3a3a);
+  background: rgba(0,0,0,0.04);
+}
+.notes-mode.active {
+  color: var(--black, #0a0a0a);
+  background: var(--g6, #efefef);
+  font-weight: 600;
+}
+.notes-tb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.notes-fmt-btns {
+  display: flex;
+  gap: 1px;
+}
+
+/* Notes preview pane */
+.notes-preview {
+  width: 100%;
+  min-height: 300px;
+  max-height: 500px;
+  overflow-y: auto;
+  padding: 14px 16px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--black, #0a0a0a);
+  background: var(--white, #ffffff);
+  scrollbar-width: thin;
+  scrollbar-color: var(--g5, #e2e2e2) transparent;
+}
+.notes-preview::-webkit-scrollbar { width: 3px; }
+.notes-preview::-webkit-scrollbar-thumb { background: var(--g5, #e2e2e2); border-radius: 2px; }
+
+.notes-preview:empty::before {
+  content: 'Nothing to preview yet — start writing!';
+  color: var(--g4, #b0b0b0);
+  font-style: italic;
+  font-size: 12.5px;
+}
+
+/* Style markdown elements inside the notes preview */
+.notes-preview h1, .notes-preview h2, .notes-preview h3,
+.notes-preview h4, .notes-preview h5, .notes-preview h6 {
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  line-height: 1.4;
+  margin-top: 14px;
+  margin-bottom: 4px;
+  color: var(--black, #0a0a0a);
+}
+.notes-preview h1 { font-size: 17px; }
+.notes-preview h2 { font-size: 15px; }
+.notes-preview h3 { font-size: 14px; }
+.notes-preview h4 { font-size: 13px; }
+.notes-preview > :first-child { margin-top: 0; }
+.notes-preview > :last-child { margin-bottom: 0; }
+.notes-preview p { margin: 4px 0; line-height: 1.75; }
+.notes-preview ul, .notes-preview ol { margin: 6px 0; padding-left: 20px; }
+.notes-preview li { margin: 3px 0; line-height: 1.65; }
+.notes-preview code {
+  background: rgba(0,0,0,0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'DM Mono', 'SF Mono', monospace;
+}
+.notes-preview pre {
+  background: rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.notes-preview pre code { background: none; padding: 0; }
+.notes-preview blockquote {
+  border-left: 3px solid var(--g4, #b0b0b0);
+  margin: 8px 0;
+  padding: 6px 12px;
+  color: var(--g3, #7a7a7a);
+  font-style: italic;
+  background: rgba(0,0,0,0.02);
+  border-radius: 0 6px 6px 0;
+}
+.notes-preview strong { font-weight: 600; }
+.notes-preview hr { border: none; border-top: 1px solid var(--g5, #e2e2e2); margin: 10px 0; }
+.notes-preview a { color: #1a6eff; text-decoration: none; border-bottom: 1px solid rgba(26,110,255,0.2); }

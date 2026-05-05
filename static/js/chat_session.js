@@ -394,50 +394,12 @@ function retryQuiz(){
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 function fmt(text){
-  // Process code blocks first to avoid inline formatting inside them
-  const codeBlocks=[];
-  text=text.replace(/```(\w*)\n?([\s\S]*?)```/g,(_,lang,code)=>{
-    const i=codeBlocks.length;
-    codeBlocks.push({lang:lang||'code',code:code.trim()});
-    return `\x00CODE${i}\x00`;
-  });
-  const lines=text.split('\n');
-  let html='',ul=false,ol=false;
-  for(const raw of lines){
-    const line=raw;
-    if(line.includes('\x00CODE')){
-      cl();
-      html=html.replace(/\x00CODE(\d+)\x00/,(_,i)=>{
-        const{lang,code}=codeBlocks[+i];
-        return `<pre><div class="code-header"><span class="code-lang">${esc(lang)}</span><button class="code-copy" onclick="copyCode(this)">Copy</button></div><code>${esc(code)}</code></pre>`;
-      });
-      // handle inline in same pass
-      const remaining=line.replace(/\x00CODE(\d+)\x00/g,(_,i)=>{
-        const{lang,code}=codeBlocks[+i];
-        return `<pre><div class="code-header"><span class="code-lang">${esc(lang)}</span><button class="code-copy" onclick="copyCode(this)">Copy</button></div><code>${esc(code)}</code></pre>`;
-      });
-      if(remaining!==line)html+=remaining;
-      continue;
-    }
-    const el=esc(line);
-    if(/^###\s/.test(el)){cl();html+=`<h4>${el.slice(4)}</h4>`;}
-    else if(/^##\s/.test(el)){cl();html+=`<h3>${el.slice(3)}</h3>`;}
-    else if(/^#\s/.test(el)){cl();html+=`<h2>${el.slice(2)}</h2>`;}
-    else if(/^[-*]\s/.test(el)){if(!ul){html+='<ul>';ul=true;}html+=`<li>${il(el.slice(2))}</li>`;}
-    else if(/^\d+\.\s/.test(el)){if(!ol){html+='<ol>';ol=true;}html+=`<li>${il(el.replace(/^\d+\.\s/,''))}</li>`;}
-    else if(/^&gt;\s/.test(el)){cl();html+=`<blockquote>${il(el.slice(5))}</blockquote>`;}
-    else if(el.trim()==='---'){cl();html+='<hr style="border:none;border-top:1px solid var(--g5);margin:10px 0">';}
-    else{cl();if(el.trim())html+=`<p>${il(el)}</p>`;}
+  if(!text) return '';
+  try {
+    return marked.parse(text, { breaks: true, gfm: true });
+  } catch(e) {
+    return '<p>' + esc(text) + '</p>';
   }
-  cl();
-  // Flush remaining code block placeholders
-  html=html.replace(/\x00CODE(\d+)\x00/g,(_,i)=>{
-    const{lang,code}=codeBlocks[+i];
-    return `<pre><div class="code-header"><span class="code-lang">${esc(lang)}</span><button class="code-copy" onclick="copyCode(this)">Copy</button></div><code>${esc(code)}</code></pre>`;
-  });
-  return html;
-  function cl(){if(ul){html+='</ul>';ul=false;}if(ol){html+='</ol>';ol=false;}}
-  function il(s){return s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>').replace(/`(.+?)`/g,'<code>$1</code>').replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');}
 }
 
 function copyCode(btn){

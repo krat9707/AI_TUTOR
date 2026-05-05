@@ -314,54 +314,12 @@ function scrollChat() {
 
 function fmt(text) {
   if (!text) return '';
-  let t = text
-    // Escape HTML first to prevent XSS
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-  // Block elements — process line by line
-  const lines = t.split('\n');
-  const out = [];
-  let inList = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-
-    // Headings
-    if (/^### (.+)/.test(line)) { if(inList){out.push('</ul>');inList=false;} out.push(`<h4 style="font-size:13px;font-weight:700;margin:12px 0 4px;letter-spacing:-.1px">${line.replace(/^### /,'')}</h4>`); continue; }
-    if (/^## (.+)/.test(line))  { if(inList){out.push('</ul>');inList=false;} out.push(`<h3 style="font-size:14px;font-weight:700;margin:14px 0 5px;letter-spacing:-.2px">${line.replace(/^## /,'')}</h3>`); continue; }
-    if (/^# (.+)/.test(line))   { if(inList){out.push('</ul>');inList=false;} out.push(`<h2 style="font-size:15px;font-weight:700;margin:16px 0 6px;letter-spacing:-.3px">${line.replace(/^# /,'')}</h2>`); continue; }
-
-    // Bullet list
-    if (/^[-*] (.+)/.test(line)) {
-      if (!inList) { out.push('<ul style="margin:6px 0 6px 16px;padding:0">'); inList=true; }
-      out.push(`<li style="margin-bottom:3px;line-height:1.65">${line.replace(/^[-*] /,'')}</li>`);
-      continue;
-    }
-    // Numbered list
-    if (/^\d+\. (.+)/.test(line)) {
-      if (!inList) { out.push('<ol style="margin:6px 0 6px 16px;padding:0">'); inList=true; }
-      out.push(`<li style="margin-bottom:3px;line-height:1.65">${line.replace(/^\d+\. /,'')}</li>`);
-      continue;
-    }
-
-    if (inList) { out.push('</ul>'); inList=false; }
-
-    // Horizontal rule
-    if (/^---+$/.test(line.trim())) { out.push('<hr style="border:none;border-top:1px solid var(--g5);margin:10px 0">'); continue; }
-
-    // Empty line = paragraph break
-    if (line.trim() === '') { out.push('<div style="height:6px"></div>'); continue; }
-
-    out.push(`<span style="display:block;line-height:1.75">${line}</span>`);
+  try {
+    return marked.parse(text, { breaks: true, gfm: true });
+  } catch(e) {
+    // Fallback: escape and return as paragraphs
+    return '<p>' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</p>';
   }
-  if (inList) out.push('</ul>');
-
-  // Inline: bold, italic, code, links
-  return out.join('')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/_(.+?)_/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code style="background:rgba(0,0,0,0.07);padding:1px 5px;border-radius:4px;font-size:11.5px;font-family:monospace">$1</code>');
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
@@ -506,6 +464,37 @@ function applyNote(type) {
   const map = { bold:`**${sel}**`, italic:`_${sel}_`, h:`\n## ${sel}`, bullet:`\n- ${sel}` };
   ta.setRangeText(map[type] || sel, s, e, 'end');
   ta.focus();
+  updateNotesPreview();
+}
+
+function switchNotesMode(mode) {
+  document.querySelectorAll('.notes-mode').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  const ta = document.getElementById('notes-ta');
+  const preview = document.getElementById('notes-preview');
+  const fmtBtns = document.getElementById('notes-fmt-btns');
+  if (mode === 'preview') {
+    ta.style.display = 'none';
+    preview.style.display = 'block';
+    if (fmtBtns) fmtBtns.style.display = 'none';
+    updateNotesPreview();
+  } else {
+    ta.style.display = '';
+    preview.style.display = 'none';
+    if (fmtBtns) fmtBtns.style.display = '';
+    ta.focus();
+  }
+}
+
+function updateNotesPreview() {
+  const ta = document.getElementById('notes-ta');
+  const preview = document.getElementById('notes-preview');
+  if (!ta || !preview) return;
+  const text = ta.value || '';
+  try {
+    preview.innerHTML = text.trim() ? marked.parse(text, { breaks: true, gfm: true }) : '';
+  } catch(e) {
+    preview.textContent = text;
+  }
 }
 
 async function saveNotes() {

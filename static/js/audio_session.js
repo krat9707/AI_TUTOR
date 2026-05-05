@@ -510,7 +510,37 @@ function applyNote(type){
   const w={bold:`**${sel}**`,italic:`_${sel}_`,h2:`## ${sel}`,bullet:`- ${sel}`};
   ta.value=ta.value.slice(0,s)+(w[type]||sel)+ta.value.slice(e);
   ta.focus();
+  updateNotesPreview();
 }
+
+function switchNotesMode(mode){
+  document.querySelectorAll('.notes-mode').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
+  const ta=document.getElementById('notes-ta');
+  const preview=document.getElementById('notes-preview');
+  const fmtBtns=document.getElementById('notes-fmt-btns');
+  if(mode==='preview'){
+    ta.style.display='none';
+    preview.style.display='block';
+    if(fmtBtns)fmtBtns.style.display='none';
+    updateNotesPreview();
+  }else{
+    ta.style.display='';
+    preview.style.display='none';
+    if(fmtBtns)fmtBtns.style.display='';
+    ta.focus();
+  }
+}
+
+function updateNotesPreview(){
+  const ta=document.getElementById('notes-ta');
+  const preview=document.getElementById('notes-preview');
+  if(!ta||!preview)return;
+  const text=ta.value||'';
+  try{
+    preview.innerHTML=text.trim()?marked.parse(text,{breaks:true,gfm:true}):'';
+  }catch(e){preview.textContent=text;}
+}
+
 async function saveNotes(){
   const text=document.getElementById('notes-ta')?.value||'';
   try{
@@ -664,19 +694,12 @@ function startExamTimer(){
 // ── Helpers ───────────────────────────────────────────────────────────────
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function fmt(text){
-  const lines=esc(text).split('\n');let html='',ul=false,ol=false;
-  for(const line of lines){
-    if(/^###\s/.test(line)){cl();html+=`<h4 style="font-size:13px;font-weight:700;margin:10px 0 3px">${line.slice(4)}</h4>`;}
-    else if(/^##\s/.test(line)){cl();html+=`<h3 style="font-size:14px;font-weight:700;margin:12px 0 4px">${line.slice(3)}</h3>`;}
-    else if(/^#\s/.test(line)){cl();html+=`<h2 style="font-size:16px;font-weight:700;margin:14px 0 5px">${line.slice(2)}</h2>`;}
-    else if(/^[-*]\s/.test(line)){if(!ul){html+='<ul style="margin:6px 0;padding-left:18px">'; ul=true;}html+=`<li style="margin:3px 0">${il(line.slice(2))}</li>`;}
-    else if(/^\d+\.\s/.test(line)){if(!ol){html+='<ol style="margin:6px 0;padding-left:18px">'; ol=true;}html+=`<li style="margin:3px 0">${il(line.replace(/^\d+\.\s/,''))}</li>`;}
-    else if(line.trim()==='---'){cl();html+='<hr style="border:none;border-top:1px solid var(--g5);margin:10px 0">';}
-    else{cl();if(line.trim())html+=`<p style="margin:4px 0">${il(line)}</p>`;}
+  if(!text) return '';
+  try {
+    return marked.parse(text, { breaks: true, gfm: true });
+  } catch(e) {
+    return '<p>' + esc(text) + '</p>';
   }
-  cl();return html;
-  function cl(){if(ul){html+='</ul>';ul=false;}if(ol){html+='</ol>';ol=false;}}
-  function il(s){return s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>').replace(/`(.+?)`/g,'<code style="font-family:\'DM Mono\',monospace;font-size:.88em;background:var(--g6);padding:1px 5px;border-radius:4px">$1</code>');}
 }
 function resolveCorrectIdx(q){
   const ans=(q.answer||q.correct_answer||'').toString().trim();

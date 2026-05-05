@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{{ session.topic or 'Audio Lecture' }} — Axiom</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/audio_session.css') }}"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/markdown.css') }}"/>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/CustomEase.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 </head>
 <body>
 
@@ -154,12 +156,19 @@
         <div class="tp-body">
           <div class="notes-editor">
             <div class="notes-tb">
-              <button class="ntb" onclick="applyNote('bold')"><b>B</b></button>
-              <button class="ntb" onclick="applyNote('italic')"><i>I</i></button>
-              <button class="ntb" onclick="applyNote('h2')">H2</button>
-              <button class="ntb" onclick="applyNote('bullet')">•</button>
+              <div class="notes-mode-tabs">
+                <button class="notes-mode active" data-mode="write" onclick="switchNotesMode('write')">Write</button>
+                <button class="notes-mode" data-mode="preview" onclick="switchNotesMode('preview')">Preview</button>
+              </div>
+              <div class="notes-fmt-btns" id="notes-fmt-btns">
+                <button class="ntb" onclick="applyNote('bold')"><b>B</b></button>
+                <button class="ntb" onclick="applyNote('italic')"><i>I</i></button>
+                <button class="ntb" onclick="applyNote('h2')">H2</button>
+                <button class="ntb" onclick="applyNote('bullet')">•</button>
+              </div>
             </div>
-            <textarea class="notes-ta" id="notes-ta" placeholder="Type notes here, or highlight text → Add to notes…">{{ session.notes or '' }}</textarea>
+            <textarea class="notes-ta" id="notes-ta" placeholder="Type notes here, or highlight text → Add to notes…" oninput="updateNotesPreview()">{{ session.notes or '' }}</textarea>
+            <div id="notes-preview" class="notes-preview" style="display:none"></div>
           </div>
           <button class="save-btn" onclick="saveNotes()">
             <i data-lucide="save"></i> Save Notes
