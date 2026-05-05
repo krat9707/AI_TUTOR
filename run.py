@@ -102,7 +102,7 @@ if __name__ == "__main__":
 ╠══════════════════════════════════════════════════════╣
 ║   🌐  http://localhost:{PORT:<28}                    ║
 ║   🔧  Debug mode : {str(DEBUG):<32}                  ║
-║   🗄️  Database   : studyai.db (SQLite)               ║
+║   🗄️  Database   : axiom.db (SQLite)                  ║
 ║   🧠  RAG        : Codestral-embed (Backup: BM25)    ║
 ╚══════════════════════════════════════════════════════╝
 """)
