@@ -1786,5 +1786,9 @@ def _auto_migrate():
                 except Exception as ex:
                     print(f"[migrate] skip {tname}.{col.name}: {ex}")
 
+@app.route("/ping")
+def ping():
+    return "ok"
+
 with app.app_context():
     _auto_migrate()
