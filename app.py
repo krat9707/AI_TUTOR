@@ -20,7 +20,15 @@ load_dotenv()
 # ── Google OAuth config ────────────────────────────────────────────────────────
 GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/google/callback")
+
+
+def get_google_redirect_uri() -> str:
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+    if redirect_uri:
+        return redirect_uri
+    if request.host_url:
+        return request.host_url.rstrip("/") + "/auth/google/callback"
+    return "http://localhost:5000/auth/google/callback"
 
 # ── App setup ──────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -487,9 +495,10 @@ def google_login():
         return "Google OAuth is not configured.", 500
     state = secrets.token_urlsafe(32)
     session["oauth_state"] = state
+    redirect_uri = get_google_redirect_uri()
     params = {
         "client_id":     GOOGLE_CLIENT_ID,
-        "redirect_uri":  GOOGLE_REDIRECT_URI,
+        "redirect_uri":  redirect_uri,
         "response_type": "code",
         "scope":         "openid email profile",
         "state":         state,
@@ -500,6 +509,7 @@ def google_login():
 @app.route("/auth/google/callback")
 def google_callback():
     import requests as req
+    redirect_uri = get_google_redirect_uri()
 
     # ── CSRF guard ─────────────────────────────────────────────────────────────
     if request.args.get("state") != session.pop("oauth_state", None):
@@ -518,7 +528,7 @@ def google_callback():
         "code":          code,
         "client_id":     GOOGLE_CLIENT_ID,
         "client_secret": GOOGLE_CLIENT_SECRET,
-        "redirect_uri":  GOOGLE_REDIRECT_URI,
+        "redirect_uri":  redirect_uri,
         "grant_type":    "authorization_code",
     }, timeout=10)
     if not token_resp.ok:
