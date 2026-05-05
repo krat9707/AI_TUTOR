@@ -4,7 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{{ session.topic or 'Session' }} — Axiom</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/session.css') }}"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/session.css') }}?v=2"/>
 
   <!-- Lucide icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
@@ -411,6 +411,23 @@
   </div>
 </div>
 
+<!-- ── SUPADATA MODAL ── -->
+<div class="modal-bg" id="supadata-modal">
+  <div class="modal">
+    <h3 id="supadata-popup-title">Quota Exhausted</h3>
+    <p class="sub" id="supadata-popup-msg">To continue loading transcripts, please provide your Supadata API key.</p>
+    <div class="mf">
+      <div>
+        <input type="text" id="supadata-api-key" placeholder="Enter Supadata API Key" style="width:100%;background:rgba(0,0,0,0.2);border:1px solid var(--border);padding:12px;border-radius:8px;color:var(--text);margin-bottom:16px;">
+      </div>
+      <div class="mactions">
+        <button class="mbtn mbtn-cancel" onclick="closeSupadataModal()">Cancel</button>
+        <button class="mbtn mbtn-go" id="supadata-save-btn" onclick="saveSupadataKey()">Save & Retry</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -432,7 +449,7 @@
     if (typeof lucide !== 'undefined') lucide.createIcons();
   });
 </script>
-<script src="{{ url_for('static', filename='js/session.js') }}"></script>
+<script src="{{ url_for('static', filename='js/session.js') }}?v=3"></script>
 <script>
   // Re-run lucide only when new [data-lucide] elements appear, with debounce to prevent loops
   let _lucideDebounce = null;

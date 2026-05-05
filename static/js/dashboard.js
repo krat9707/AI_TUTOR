@@ -163,7 +163,7 @@ async function doLink() {
     if (!sd?.ok) { toast(sd?.error || 'Failed.'); hideProg(); resetLinkBtn(); return; }
     prog('Fetching transcript…', 45);
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 30000);
+    const t = setTimeout(() => ctrl.abort(), 120000);
     let yd;
     try {
       const res = await fetch(`/api/session/${sd.sid}/add_youtube`, {
@@ -176,7 +176,27 @@ async function doLink() {
       toast(err.name === 'AbortError' ? 'Timed out.' : 'Network error.');
       hideProg(); resetLinkBtn(); return;
     }
-    if (!yd?.ok) { toast(yd?.error || 'Could not fetch transcript.'); hideProg(); resetLinkBtn(); return; }
+    if (!yd?.ok) { 
+      if (yd?.error_code === 'QUOTA_EXHAUSTED' || yd?.error_code === 'USER_KEY_EXHAUSTED') {
+        showSupadataPopup(yd.error || 'Quota exhausted. Please provide your Supadata API key.', url);
+        hideProg(); resetLinkBtn(); return;
+      }
+      toast(yd?.error || 'Could not fetch transcript.'); 
+      hideProg(); resetLinkBtn(); return; 
+    }
+    
+    if (yd?.key_source === 'pool') {
+      sessionStorage.setItem('pool_quota', '1');
+      sessionStorage.setItem('pool_quota_url', url);
+      
+      prog('Indexing…', 85);
+      await new Promise(r => setTimeout(r, 400));
+      
+      hideProg();
+      location.href = `/session/${sd.sid}`;
+      return;
+    }
+    
     prog('Indexing…', 85);
     await new Promise(r => setTimeout(r, 400));
     prog('Done!', 100);
@@ -584,4 +604,52 @@ async function doAudio() {
     hideProg();
   }
   btn.textContent = 'Transcribe & Study →'; btn.disabled = false;
+}
+
+/* ─────────────────────────────────────────────
+   SUPADATA QUOTA POPUP
+───────────────────────────────────────────── */
+let _pendingYtUrl = '';
+
+function showSupadataPopup(msg, url) {
+  _pendingYtUrl = url;
+  const popup = document.getElementById('supadata-popup');
+  if (popup) {
+    const msgEl = document.getElementById('supadata-popup-msg');
+    if (msgEl) msgEl.textContent = msg;
+    popup.classList.remove('hidden');
+  }
+}
+
+function closeSupadataPopup() {
+  const popup = document.getElementById('supadata-popup');
+  if (popup) popup.classList.add('hidden');
+}
+
+async function saveSupadataKey() {
+  const key = document.getElementById('supadata-api-key')?.value.trim();
+  if (!key) { toast('Please enter a key'); return; }
+  
+  const btn = document.getElementById('supadata-save-btn');
+  if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
+  
+  try {
+    const res = await api('/api/user/supadata_key', { key });
+    if (res.ok) {
+      toast('Key saved successfully!');
+      closeSupadataPopup();
+      if (window._successSid) {
+        window.location.href = `/session/${window._successSid}`;
+      } else if (_pendingYtUrl) {
+        const urlInput = document.getElementById('link-url');
+        if (urlInput) urlInput.value = _pendingYtUrl;
+        doLink();
+      }
+    } else {
+      toast(res.error || 'Invalid key');
+    }
+  } catch (e) {
+    toast('Network error');
+  }
+  if (btn) { btn.textContent = 'Save & Retry'; btn.disabled = false; }
 }

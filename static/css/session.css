@@ -634,7 +634,7 @@ body {
   transition: opacity .26s, transform .26s;
   white-space: nowrap;
 }
-.toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.on { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
 
 /* ── RESPONSIVE ── */
 @media (max-width: 860px) {

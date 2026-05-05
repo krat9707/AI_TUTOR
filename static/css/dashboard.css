@@ -166,7 +166,7 @@
   transition: opacity .24s ease, transform .24s ease; white-space: nowrap;
   font-family: var(--font);
 }
-.toast.is-on { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.is-on { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
 
 /* ════════════════════════════════════════════
    AUDIO MODAL STYLES

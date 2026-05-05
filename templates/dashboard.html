@@ -10,7 +10,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v=3" />
 
   <script>
     tailwind.config = {
@@ -984,6 +984,19 @@
   <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
+  <!-- ─── SUPADATA QUOTA POPUP ─── -->
+  <div id="supadata-popup" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity duration-300">
+    <div class="surface p-8 rounded-2xl w-full max-w-md mx-4 shadow-2xl relative">
+      <h3 class="text-xl font-display font-medium text-white mb-2" id="supadata-popup-title">Quota Exhausted</h3>
+      <p class="text-sm text-gray-400 mb-6" id="supadata-popup-msg">To continue loading transcripts, please provide your Supadata API key.</p>
+      <input type="text" id="supadata-api-key" placeholder="Enter Supadata API Key" class="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-3 text-white mb-4 focus:outline-none focus:border-blue-500 transition-colors">
+      <div class="flex gap-3 justify-end">
+        <button onclick="closeSupadataPopup()" class="px-4 py-2 rounded-lg text-sm font-medium text-gray-300 hover:text-white transition-colors">Cancel</button>
+        <button onclick="saveSupadataKey()" id="supadata-save-btn" class="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors">Save & Retry</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ─── DARK MODE TOGGLE ─── -->
   <script>
     const html = document.documentElement;
@@ -1162,6 +1175,6 @@
   </script>
 
   <!-- ─── MAIN JS ─── -->
-  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}?v=4"></script>
 </body>
 </html>

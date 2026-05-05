@@ -57,6 +57,33 @@ function entrance() {
 
   // Tab slider initial position
   setTimeout(updateSlider, 50);
+
+  // Check for Supadata pool quota toast
+  if (sessionStorage.getItem('pool_quota')) {
+    sessionStorage.removeItem('pool_quota');
+    const url = sessionStorage.getItem('pool_quota_url') || '';
+    sessionStorage.removeItem('pool_quota_url');
+    setTimeout(() => {
+      const el = document.getElementById('toast');
+      if (el) {
+        const safeUrl = url.replace(/'/g, "\\'");
+        el.innerHTML = `Using app's quota. <a href="javascript:void(0)" onclick="showSupadataModal('To ensure uninterrupted service, please add your own API key.', '${safeUrl}')" style="text-decoration: underline; color: #93c5fd; cursor: pointer; margin-left: 6px;">Add your own key?</a>`;
+        el.classList.add('on');
+        clearTimeout(_toastT);
+        _toastT = setTimeout(() => {
+          el.classList.remove('on');
+          setTimeout(() => { if (!el.classList.contains('on')) el.textContent = ''; }, 300);
+        }, 8000);
+        
+        // Debug print to terminal
+        fetch('/api/debug', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ msg: 'TOAST MESSAGE POPPED UP ON YT SESSION PAGE!' })
+        }).catch(e => {});
+      }
+    }, 1000); // Wait 1s after entrance for better visibility
+  }
 }
 
 // ── Tab system ────────────────────────────────────────────────────────────────
@@ -724,6 +751,66 @@ document.getElementById('exam-modal')?.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   closeExamModal();
+  if (document.getElementById('supadata-modal')?.classList.contains('open')) {
+    closeSupadataModal();
+  }
+});
+
+// ── Supadata Quota Modal ──────────────────────────────────────────────────────
+let _supadataRetryUrl = '';
+
+window.showSupadataModal = function(msg, retryUrl) {
+  _supadataRetryUrl = retryUrl || '';
+  document.getElementById('supadata-popup-msg').textContent = msg || 'To continue loading transcripts, please provide your Supadata API key.';
+  const bg = document.getElementById('supadata-modal');
+  bg.classList.add('open');
+  gsap.fromTo(bg, { opacity:0 }, { opacity:1, duration:.22, ease:'power2.out' });
+  gsap.fromTo(bg.querySelector('.modal'),
+    { opacity:0, scale:.9, y:18 },
+    { opacity:1, scale:1, y:0, duration:.36, ease:'pop' }
+  );
+};
+
+window.closeSupadataModal = function() {
+  const bg = document.getElementById('supadata-modal');
+  if (!bg) return;
+  gsap.to(bg.querySelector('.modal'), { opacity:0, scale:.93, y:10, duration:.2, ease:'power2.in' });
+  gsap.to(bg, { opacity:0, duration:.26, ease:'power2.in', onComplete: () => bg.classList.remove('open') });
+};
+
+window.saveSupadataKey = async function() {
+  const keyInput = document.getElementById('supadata-api-key').value.trim();
+  if (!keyInput) {
+    toast('Please enter a valid API key.');
+    return;
+  }
+  const btn = document.getElementById('supadata-save-btn');
+  const oldText = btn.textContent;
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/user/supadata_key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: keyInput })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast('API key saved!');
+      closeSupadataModal();
+    } else {
+      toast(data.error || 'Failed to save API key.');
+    }
+  } catch (err) {
+    toast('Network error. Could not save key.');
+  }
+  btn.textContent = oldText;
+  btn.disabled = false;
+};
+
+document.getElementById('supadata-modal')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('supadata-modal')) closeSupadataModal();
 });
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

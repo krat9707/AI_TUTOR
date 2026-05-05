@@ -46,6 +46,7 @@ class User(db.Model):
     avatar_seed = db.Column(db.String(40),  default="")
     avatar_url  = db.Column(db.String(200), default="")  # relative path e.g. avatars/uid.jpg
     pref_model_id = db.Column(db.String(40), default="groq_llama")  # active model
+    supadata_key = db.Column(db.String(200), default="")
     created_at  = db.Column(db.DateTime,    default=datetime.utcnow)
     sessions    = db.relationship("StudySession", backref="user", lazy=True,
                                   cascade="all, delete-orphan")
@@ -612,7 +613,20 @@ def api_upload_avatar():
     db.session.commit()
     return jsonify({"ok": True, "avatar_url": u.avatar_url})
 
-# ── Session API ────────────────────────────────────────────────────────────────
+@app.route("/api/user/supadata_key", methods=["POST"])
+@login_required
+def api_supadata_key():
+    u = current_user()
+    data = request.get_json() or {}
+    key = data.get("key", "").strip()
+    if not key:
+        return jsonify({"ok": False, "error": "Key cannot be empty"}), 400
+    
+    u.supadata_key = key
+    db.session.commit()
+    return jsonify({"ok": True})
+
+# ── SESSION MGMT ────────────────────────────────────────────────────────────────
 @app.route("/api/session/create", methods=["POST"])
 @login_required
 def api_create_session():
@@ -1167,10 +1181,57 @@ def api_ocr_figures(sid):
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "figures": []})
 
+def _get_pool_keys():
+    keys_str = os.environ.get("SUPADATA_KEYS", "")
+    if not keys_str:
+        return []
+    
+    return [k.strip() for k in keys_str.split(",") if k.strip()]
+
+def _try_supadata_key(api_key, video_id):
+    import requests
+    url = f"https://api.supadata.ai/v1/youtube/transcript?url=https://www.youtube.com/watch?v={video_id}"
+    try:
+        r = requests.get(url, headers={"x-api-key": api_key}, timeout=20)
+        if r.status_code == 200:
+            return r.json()
+        elif r.status_code == 429:
+            return None
+        elif r.status_code == 401:
+            raise RuntimeError("INVALID_KEY")
+        else:
+            raise RuntimeError(f"Supadata error {r.status_code}: {r.text}")
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Network error: {e}")
+
+def _fetch_yt_transcript(video_id, user):
+    if user and user.supadata_key:
+        print("[YT] Using user's personal Supadata API key...", flush=True)
+        res = _try_supadata_key(user.supadata_key, video_id)
+        if res is not None:
+            return res, "user"
+        raise RuntimeError("USER_KEY_EXHAUSTED")
+        
+    pool_keys = _get_pool_keys()
+    for key in pool_keys:
+        print("[YT] Using app's pool Supadata API key...", flush=True)
+        try:
+            res = _try_supadata_key(key, video_id)
+            if res is not None:
+                return res, "pool"
+        except RuntimeError as e:
+            if str(e) == "INVALID_KEY":
+                continue
+            raise e
+            
+    if not pool_keys:
+        raise RuntimeError("QUOTA_EXHAUSTED")
+    raise RuntimeError("QUOTA_EXHAUSTED")
+
 @app.route("/api/session/<sid>/add_youtube", methods=["POST"])
 @login_required
 def api_add_youtube(sid):
-    """Fetch YouTube transcript - with full debug logging."""
+    """Fetch YouTube transcript using Supadata."""
     import re, sys
 
     u    = current_user()
@@ -1208,226 +1269,54 @@ def api_add_youtube(sid):
         }), 400
 
     transcript_text = None
-    error_log = []
-
-    # ── Strategy 1: youtube-transcript-api (new API >=0.6) ─────────────────
-    print("[YT] Trying youtube-transcript-api...", flush=True)
+    key_source = None
+    
     try:
-        from youtube_transcript_api import YouTubeTranscriptApi
-        api = YouTubeTranscriptApi()
-
-        # Try fetching English first, then fall back to any language
-        chunks = None
-        try:
-            chunks = api.fetch(video_id, languages=["en", "en-US", "en-GB"])
-        except Exception:
-            pass
-
-        if not chunks:
-            try:
-                # list() returns TranscriptList — iterate and fetch first available
-                tlist = api.list(video_id)
-                for t in tlist:
-                    try:
-                        chunks = t.fetch()
-                        break
-                    except Exception:
-                        continue
-            except Exception:
-                pass
-
-        # Older API (<0.6) uses class methods — try as fallback
-        if not chunks:
-            try:
-                chunks = YouTubeTranscriptApi.get_transcript(video_id)
-            except Exception:
-                pass
-
-        if chunks:
-            # Serialise raw chunks for transcript display (text + start time)
-            import json as _json
-            raw_chunks = []
-            parts = []
-            for c in chunks:
-                if isinstance(c, dict):
-                    txt = c.get("text", "")
-                    raw_chunks.append({"text": txt, "start": c.get("start", 0), "duration": c.get("duration", 0)})
-                else:
-                    txt = getattr(c, "text", str(c))
-                    raw_chunks.append({"text": txt, "start": getattr(c, "start", 0), "duration": getattr(c, "duration", 0)})
-                parts.append(txt)
-            raw = " ".join(parts).strip()
-            if raw:
-                transcript_text = raw
-                s.transcript_json = _json.dumps(raw_chunks)
-                print(f"[YT] Got transcript ({len(raw)} chars, {len(raw_chunks)} chunks)", flush=True)
-            else:
-                error_log.append("youtube-transcript-api: transcript was empty")
+        t_data, key_source = _fetch_yt_transcript(video_id, u)
+        
+        # t_data could be {"content": [...]} or directly [...]
+        if isinstance(t_data, dict) and "content" in t_data:
+            chunks_or_text = t_data["content"]
         else:
-            error_log.append("youtube-transcript-api: no transcript found for any language")
-
-    except ImportError:
-        msg = "youtube-transcript-api not installed — run: pip install youtube-transcript-api"
-        print(f"[YT] {msg}", flush=True)
-        error_log.append(msg)
-    except Exception as e:
-        msg = f"youtube-transcript-api: {type(e).__name__}: {e}"
-        print(f"[YT] {msg}", flush=True)
-        error_log.append(msg)
-
-    # ── Strategy 2: yt-dlp — pull caption URLs from info dict ───────────────
-    if not transcript_text:
-        print("[YT] Trying yt-dlp fallback...", flush=True)
-        try:
-            import yt_dlp, re as _re, urllib.request as _ur
-
-            def _pick_caption_url(caps_dict: dict):
-                """Return (url, ext) — English first, then any language."""
-                if not caps_dict:
-                    return None, None
-                for lang in ["en", "en-US", "en-GB", "en-orig"]:
-                    if lang in caps_dict:
-                        fmts = caps_dict[lang]
-                        for pref in ["json3", "vtt", "ttml", "srv3", "srv2", "srv1"]:
-                            for f in fmts:
-                                if f.get("ext") == pref:
-                                    return f["url"], pref
-                        if fmts:
-                            return fmts[0]["url"], fmts[0].get("ext", "vtt")
-                for lang in caps_dict:
-                    if lang.startswith("en"):
-                        fmts = caps_dict[lang]
-                        if fmts:
-                            return fmts[0]["url"], fmts[0].get("ext", "vtt")
-                for lang, fmts in caps_dict.items():
-                    if fmts:
-                        return fmts[0]["url"], fmts[0].get("ext", "vtt")
-                return None, None
-
-            def _parse_caption_content(content: str, ext: str) -> str:
-                import json as _j
-                if ext == "json3":
+            chunks_or_text = t_data
+            
+        import json as _j
+        if isinstance(chunks_or_text, list):
+            # Normalize chunks to always have "text" and "start" (in seconds)
+            normalized_chunks = []
+            for c in chunks_or_text:
+                if isinstance(c, dict):
+                    text = c.get("text", c.get("content", str(c)))
+                    start = 0.0
                     try:
-                        data = _j.loads(content)
-                        parts = []
-                        for ev in data.get("events", []):
-                            for seg in ev.get("segs", []):
-                                t = seg.get("utf8", "").strip()
-                                if t and t != "\n":
-                                    parts.append(t)
-                        txt = " ".join(parts)
-                        if txt.strip():
-                            return txt
-                    except Exception:
+                        if "offset" in c:
+                            start = float(c["offset"]) / 1000.0
+                        elif "start" in c:
+                            start = float(c["start"])
+                    except (ValueError, TypeError):
                         pass
-                text = _re.sub(r"<[^>]+>", " ", content)
-                text = _re.sub(r"\d{2}:\d{2}[\d:.,]+\s*-->.*", "", text)
-                text = _re.sub(r"^WEBVTT.*$", "", text, flags=_re.M)
-                text = _re.sub(r"^\s*\d+\s*$", "", text, flags=_re.M)
-                text = _re.sub(r"[ \t]+", " ", text)
-                text = _re.sub(r"\n{2,}", " ", text)
-                return text.strip()
+                    
+                    normalized_chunks.append({"text": text, "start": start})
+                else:
+                    normalized_chunks.append({"text": str(c), "start": 0})
+            
+            s.transcript_json = _j.dumps(normalized_chunks)
+            transcript_text = " ".join([c["text"] for c in normalized_chunks])
+        else:
+            # It's a single string
+            transcript_text = str(chunks_or_text)
+            s.transcript_json = _j.dumps([{"text": transcript_text, "start": 0}])
+            
+    except RuntimeError as e:
+        err = str(e)
+        print(f"[YT] Caught RuntimeError: {err}", flush=True)
+        if err in ("QUOTA_EXHAUSTED", "USER_KEY_EXHAUSTED"):
+            return jsonify({"ok": False, "error_code": err, "error": "Transcript quota exhausted."}), 429
+        return jsonify({"ok": False, "error": err}), 422
 
-            def _fetch_caption(url: str, ext: str) -> str:
-                try:
-                    req = _ur.Request(url, headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                      "Chrome/124.0.0.0 Safari/537.36"
-                    })
-                    with _ur.urlopen(req, timeout=20) as resp:
-                        raw = resp.read().decode("utf-8", errors="ignore")
-                    return _parse_caption_content(raw, ext)
-                except Exception as _fe:
-                    print(f"[YT] caption fetch error: {_fe}", flush=True)
-                    return ""
-
-            base_opts = {
-                "skip_download":           True,
-                "quiet":                   True,
-                "no_warnings":             True,
-                "socket_timeout":          30,
-                "ignore_no_formats_error": True,
-                "http_headers": {
-                    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                       "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                       "Chrome/124.0.0.0 Safari/537.36",
-                    "Accept-Language": "en-US,en;q=0.9",
-                },
-            }
-
-            info = None
-            for pc in [None, ["web"], ["mweb"], ["ios"], ["tv_embedded"]]:
-                try:
-                    opts = dict(base_opts)
-                    if pc:
-                        opts["extractor_args"] = {"youtube": {"player_client": pc}}
-                    with yt_dlp.YoutubeDL(opts) as ydl:
-                        info = ydl.extract_info(
-                            f"https://www.youtube.com/watch?v={video_id}",
-                            download=False,
-                        )
-                    if info:
-                        subs_found = bool(info.get("subtitles") or info.get("automatic_captions"))
-                        print(f"[YT] yt-dlp info via player={pc} captions={subs_found}", flush=True)
-                        if subs_found:
-                            break
-                except Exception as _pe:
-                    print(f"[YT] player={pc} error: {_pe}", flush=True)
-
-            if not info:
-                error_log.append("yt-dlp: could not extract video info")
-                raise RuntimeError("no info")
-
-            title = info.get("title", "")
-            subs  = info.get("subtitles") or {}
-            auto  = info.get("automatic_captions") or {}
-
-            print(f"[YT] subtitles langs: {list(subs.keys())[:10]}", flush=True)
-            print(f"[YT] auto_captions langs: {list(auto.keys())[:10]}", flush=True)
-
-            caption_text = ""
-            for caps_key, caps_dict in [("subtitles", subs), ("automatic_captions", auto)]:
-                cap_url, cap_ext = _pick_caption_url(caps_dict)
-                if cap_url:
-                    caption_text = _fetch_caption(cap_url, cap_ext)
-                    if caption_text:
-                        print(f"[YT] captions via {caps_key} ({cap_ext}, "
-                              f"{len(caption_text)} chars)", flush=True)
-                        break
-
-            if caption_text:
-                transcript_text = caption_text
-                if title and s.topic in ("", "YouTube Video"):
-                    s.topic       = title[:200]
-                    s.video_title = title[:300]
-            else:
-                print(f"[YT] no captions found. subtitles={list(subs.keys())}, "
-                      f"auto={list(auto.keys())}", flush=True)
-                error_log.append(
-                    f"yt-dlp: video has no captions "
-                    f"(subtitles={list(subs.keys())[:5]}, "
-                    f"auto={list(auto.keys())[:5]})"
-                )
-
-        except ImportError:
-            error_log.append("yt-dlp not installed — run: pip install yt-dlp")
-        except RuntimeError:
-            pass
-        except Exception as e:
-            msg = f"yt-dlp: {type(e).__name__}: {e}"
-            print(f"[YT] {msg}", flush=True)
-            error_log.append(msg)
-
-
-    # ── Nothing worked ─────────────────────────────────────────────────────
     if not transcript_text:
-        detail = " | ".join(error_log) or "Unknown error"
-        print(f"[YT] FAILED: {detail}", flush=True)
-        return jsonify({
-            "ok": False,
-            "error": f"Could not fetch transcript. Detail: {detail}"
-        }), 400
+        print(f"[YT] Transcript text was empty. t_dict: {t_dict}", flush=True)
+        return jsonify({"ok": False, "error": "Transcript content was empty."}), 422
 
     # ── Persist transcript to DB NOW (before RAG) so restart always works ──
     s.raw_text     = transcript_text
@@ -1487,13 +1376,21 @@ def api_add_youtube(sid):
                 print(f"[YT] Chapter/title fetch skipped: {ce}", flush=True)
         db.session.commit()
 
-    print(f"[YT] Done. ok={ok}", flush=True)
+    print(f"[YT] Done. ok={ok}, key_source={key_source}", flush=True)
     return jsonify({
         "ok": ok,
         "video_id": video_id,
+        "key_source": key_source,
         "transcript_length": len(transcript_text),
         "chunks": h.get_document_count() if ok else 0,
     })
+
+@app.route("/api/debug", methods=["POST"])
+def api_debug():
+    msg = request.json.get("msg", "")
+    print(f"\n[DEBUG] {msg}\n", flush=True)
+    return jsonify({"ok": True})
+
 
 
 
