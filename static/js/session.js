@@ -125,10 +125,11 @@ function updateSlider() {
   slider.style.width = active.offsetWidth + 'px';
 }
 
-// ── Transcript ────────────────────────────────────────────────────────────────
-let transcriptChunks = [];
-let chaptersData     = [];
-let trMode = 'transcript'; // 'transcript' | 'chapters' (chapters not yet implemented)
+// ── Transcript + Key Concepts ─────────────────────────────────────────────────
+let transcriptChunks  = [];
+let keyConceptsData   = [];
+let conceptExplanations = {}; // cache: { conceptName: explanationHTML }
+let _conceptTabCounter = 0;   // unique ID for concept tabs
 let ytPlayer = null;
 
 function fmtTime(sec) {
@@ -148,32 +149,217 @@ async function loadTranscript() {
       renderTranscript([]);
       return;
     }
-    transcriptChunks = data.chunks || [];
-    chaptersData     = data.chapters || [];
+    transcriptChunks  = data.chunks || [];
     renderTranscript(transcriptChunks);
   } catch(e) {
     renderTranscript([]);
   }
 }
 
-function renderChapters(chapters) {
+// ── Key Concepts rendering ────────────────────────────────────────────────────
+
+function renderKeyConcepts(concepts) {
   const cont = document.getElementById('transcript-list');
   if (!cont) return;
-  if (!chapters || !chapters.length) {
+
+  if (!concepts || !concepts.length) {
     cont.innerHTML = `<div class="tr-empty">
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-      <p>This video has no chapters. The creator hasn't added chapter markers.</p>
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+      <p>Extract key concepts from this content.</p>
+      <button class="gen-btn" id="gen-concepts-btn" onclick="generateKeyConcepts()" style="margin-top:10px;padding:8px 18px;font-size:13px;max-width:220px">
+        <div class="gen-sp"></div>
+        <span class="gen-lbl" style="display:flex;align-items:center;gap:6px">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+          Extract Key Concepts
+        </span>
+      </button>
     </div>`;
     return;
   }
-  cont.innerHTML = chapters.map((c, i) => `
-    <div class="tr-item" data-start="${c.start}" onclick="seekTo(${c.start})">
-      <span class="tr-ts">${fmtTime(c.start)}</span>
-      <span class="tr-text" style="font-weight:500">${c.title}</span>
-    </div>
-  `).join('');
-  gsap.fromTo('.tr-item', { opacity:0, x:-8 }, { opacity:1, x:0, duration:.28, stagger:.04, ease:'power2.out' });
+
+  const header = `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px 2px;margin-bottom:2px">
+    <span style="font-size:11px;color:var(--g4)">${concepts.length} concepts</span>
+    <button onclick="generateKeyConcepts(true)" style="font-size:11px;background:none;border:1px solid var(--g5);border-radius:6px;padding:3px 9px;cursor:pointer;color:var(--g3);transition:all .15s" onmouseenter="this.style.borderColor='var(--g3)';this.style.color='var(--black)'" onmouseleave="this.style.borderColor='var(--g5)';this.style.color='var(--g3)'">↺ Regenerate</button>
+  </div>`;
+
+  const buttons = `<div class="kc-grid">${concepts.map((c, i) =>
+    `<button class="kc-btn" onclick="openConceptTab('${c.replace(/'/g, "\\'")}')" data-concept="${i}">
+      <span class="kc-dot"></span>
+      <span class="kc-label">${c}</span>
+      <svg class="kc-arrow" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>`
+  ).join('')}</div>`;
+
+  cont.innerHTML = header + buttons;
+
+  // Animate in
+  gsap.fromTo('.kc-btn',
+    { opacity: 0, y: 8 },
+    { opacity: 1, y: 0, duration: .3, stagger: .04, ease: 'power2.out', delay: .05 }
+  );
 }
+
+let _kcLoading = false;
+async function generateKeyConcepts(force) {
+  if (_kcLoading) return;
+  _kcLoading = true;
+  const btn = document.getElementById('gen-concepts-btn');
+  if (btn) setLoading(btn, true);
+  try {
+    const res = await fetch(`/api/session/${SESSION_ID}/key_concepts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: !!force })
+    });
+    const data = await res.json();
+    if (data.ok && data.concepts?.length) {
+      keyConceptsData = data.concepts;
+      conceptExplanations = {}; // clear explanation cache on regenerate
+      renderKeyConcepts(keyConceptsData);
+      toast(`${data.concepts.length} key concepts extracted!`);
+    } else {
+      toast(data.error || 'Could not extract concepts.');
+    }
+  } catch(e) {
+    toast('Network error extracting concepts.');
+  }
+  _kcLoading = false;
+  if (btn) setLoading(btn, false);
+}
+
+// ── Dynamic Concept Tabs (right panel) ────────────────────────────────────────
+
+function openConceptTab(conceptName) {
+  const tabId = 'concept-' + conceptName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+  const panelId = 'panel-' + tabId;
+
+  // If tab already exists, just switch to it
+  if (document.getElementById(panelId)) {
+    switchTab(tabId);
+    return;
+  }
+
+  // Create the tab button
+  const tabNav = document.querySelector('.tabs');
+  const tabBtn = document.createElement('button');
+  tabBtn.className = 'tab concept-tab';
+  tabBtn.dataset.tab = tabId;
+  tabBtn.innerHTML = `
+    <i data-lucide="lightbulb"></i>
+    <span class="concept-tab-name">${conceptName}</span>
+    <span class="concept-tab-close" onclick="event.stopPropagation();closeConceptTab('${tabId}')" title="Close">×</span>
+  `;
+  tabBtn.addEventListener('click', () => switchTab(tabId));
+  tabNav.appendChild(tabBtn);
+
+  // Add to TAB_ORDER
+  TAB_ORDER.push(tabId);
+
+  // Create the panel
+  const panelsContainer = document.querySelector('.tab-panels');
+  const panel = document.createElement('div');
+  panel.className = 'tab-panel';
+  panel.id = panelId;
+  panel.innerHTML = `
+    <div class="concept-detail">
+      <div class="concept-detail-header">
+        <div class="concept-detail-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+        </div>
+        <h3 class="concept-detail-title">${conceptName}</h3>
+      </div>
+      <div class="concept-detail-body" id="concept-body-${tabId}">
+        <div class="concept-loading">
+          <div class="td"></div><div class="td"></div><div class="td"></div>
+          <p style="margin-top:10px;font-size:12px;color:var(--g4)">Generating explanation…</p>
+        </div>
+      </div>
+    </div>
+  `;
+  panelsContainer.appendChild(panel);
+
+  // Re-init lucide icons
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  // Scroll tabs to make the new tab visible
+  tabNav.scrollLeft = tabNav.scrollWidth;
+
+  // Switch to the new tab
+  switchTab(tabId);
+
+  // Animate tab button entrance
+  gsap.fromTo(tabBtn, { opacity: 0, scale: .9 }, { opacity: 1, scale: 1, duration: .25, ease: 'pop' });
+
+  // Fetch explanation
+  fetchConceptExplanation(conceptName, tabId);
+}
+
+async function fetchConceptExplanation(conceptName, tabId) {
+  const bodyEl = document.getElementById('concept-body-' + tabId);
+  if (!bodyEl) return;
+
+  // Check cache
+  if (conceptExplanations[conceptName]) {
+    bodyEl.innerHTML = `<div class="sum-body markdown-body">${conceptExplanations[conceptName]}</div>`;
+    gsap.fromTo(bodyEl.firstChild, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: .35, ease: 'pop' });
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/session/${SESSION_ID}/explain_concept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ concept: conceptName })
+    });
+    const data = await res.json();
+    if (data.ok && data.explanation) {
+      const html = fmt(data.explanation);
+      conceptExplanations[conceptName] = html;
+      bodyEl.innerHTML = `<div class="sum-body markdown-body">${html}</div>`;
+      gsap.fromTo(bodyEl.firstChild, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: .4, ease: 'pop' });
+    } else {
+      bodyEl.innerHTML = `<div class="tr-empty" style="padding:24px">
+        <p>Could not generate explanation. ${data.error || ''}</p>
+        <button class="gen-btn" onclick="fetchConceptExplanation('${conceptName.replace(/'/g, "\\'")}','${tabId}')" style="margin-top:10px;padding:8px 18px;font-size:12px;max-width:160px">
+          <span class="gen-lbl">↺ Retry</span>
+        </button>
+      </div>`;
+    }
+  } catch(e) {
+    bodyEl.innerHTML = `<div class="tr-empty" style="padding:24px">
+      <p>Network error. Please try again.</p>
+      <button class="gen-btn" onclick="fetchConceptExplanation('${conceptName.replace(/'/g, "\\'")}','${tabId}')" style="margin-top:10px;padding:8px 18px;font-size:12px;max-width:160px">
+        <span class="gen-lbl">↺ Retry</span>
+      </button>
+    </div>`;
+  }
+}
+
+function closeConceptTab(tabId) {
+  const tabBtn = document.querySelector(`.tab[data-tab="${tabId}"]`);
+  const panel  = document.getElementById('panel-' + tabId);
+
+  // If this is the active tab, switch to chat first
+  if (activeTab === tabId) {
+    switchTab('chat');
+  }
+
+  // Animate out then remove
+  if (tabBtn) {
+    gsap.to(tabBtn, { opacity: 0, scale: .85, duration: .18, ease: 'power2.in', onComplete: () => {
+      tabBtn.remove();
+      updateSlider();
+    }});
+  }
+  if (panel) {
+    gsap.to(panel, { opacity: 0, duration: .15, onComplete: () => panel.remove() });
+  }
+
+  // Remove from TAB_ORDER
+  const idx = TAB_ORDER.indexOf(tabId);
+  if (idx > -1) TAB_ORDER.splice(idx, 1);
+}
+
 
 function groupTranscript(chunks) {
   // Group chunks into ~25s blocks for readability

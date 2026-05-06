@@ -87,6 +87,7 @@ class StudySession(db.Model):
     content_type  = db.Column(db.String(40),  default="topic")  # topic|pdf|youtube
     embed_key         = db.Column(db.String(64),  default="")   # sha256 of source bytes (stable cache key)
     annotations_json  = db.Column(db.Text, default="[]")  # PDF highlight annotations JSON
+    key_concepts_json = db.Column(db.Text, default="")   # AI-extracted key concepts JSON
     # ─────────────────────────────────────────────────────────────────────────
     created_at    = db.Column(db.DateTime,    default=datetime.utcnow)
     interactions  = db.relationship("Interaction", backref="study_session", lazy=True,
@@ -1336,7 +1337,7 @@ def api_add_youtube(sid):
     # video_id is deterministic — same video always hits same cache entry
     import hashlib as _yl
     s.embed_key = _yl.sha256(video_id.encode()).hexdigest()[:16]
-    # Also store transcript_json if not already set (yt-dlp path skips this)
+    # Also store transcript_json if not already set
     if not s.transcript_json and transcript_text:
         import json as _j2
         words  = transcript_text.split()
@@ -1367,23 +1368,16 @@ def api_add_youtube(sid):
         ok = False
 
     if ok:
-        # Try to grab video title from transcript API if not already set
+        # Try to grab video title via oEmbed (no auth required)
         if not s.video_title:
             try:
-                import yt_dlp as _ydlp
-                with _ydlp.YoutubeDL({"quiet":True,"no_warnings":True,"socket_timeout":10}) as ydl:
-                    info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-                    s.video_title = info.get("title","")[:300]
-                    # Extract chapters if present
-                    chapters = info.get("chapters") or []
-                    if chapters:
-                        import json as _j
-                        s.chapters_json = _j.dumps([
-                            {"title": c.get("title",""), "start": c.get("start_time",0), "end": c.get("end_time",0)}
-                            for c in chapters
-                        ])
+                import requests as _rq
+                oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+                resp = _rq.get(oembed_url, timeout=8)
+                if resp.status_code == 200:
+                    s.video_title = resp.json().get("title", "")[:300]
             except Exception as ce:
-                print(f"[YT] Chapter/title fetch skipped: {ce}", flush=True)
+                print(f"[YT] Title fetch skipped: {ce}", flush=True)
         db.session.commit()
 
     print(f"[YT] Done. ok={ok}, key_source={key_source}", flush=True)
@@ -1402,6 +1396,262 @@ def api_debug():
     return jsonify({"ok": True})
 
 
+@app.route("/api/session/<sid>/yt_chapters", methods=["POST"])
+@login_required
+def api_yt_chapters(sid):
+    """Generate AI chapters from the timestamped YouTube transcript."""
+    import json as _json, re as _re
+
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+
+    data = request.get_json(silent=True) or {}
+    force = bool(data.get("force", False))
+
+    # Return cached chapters if they exist (unless force-regenerating)
+    if not force and s.chapters_json:
+        try:
+            cached = _json.loads(s.chapters_json)
+            if cached:
+                return jsonify({"ok": True, "chapters": cached, "cached": True})
+        except Exception:
+            pass
+
+    # Clear stale cache when force-regenerating
+    if force:
+        s.chapters_json = ""
+        db.session.commit()
+
+    if not s.transcript_json:
+        return jsonify({"ok": False, "error": "No transcript available to generate chapters from."}), 400
+
+    h = _get_or_rebuild(sid, s)
+
+    try:
+        # Build a timestamped transcript summary for the AI
+        chunks = _json.loads(s.transcript_json)
+
+        # Build ALL timestamped lines first
+        all_lines = []
+        for c in chunks:
+            t = float(c.get("start", 0))
+            m, sec = int(t // 60), int(t % 60)
+            text = c.get("text", "").strip()
+            if text:
+                all_lines.append((t, f"[{m}:{sec:02d}] {text}"))
+
+        # Determine video duration and target chapter count
+        video_dur_secs = all_lines[-1][0] if all_lines else 0
+        video_dur_mins = video_dur_secs / 60
+        # 1 chapter per ~8 minutes, min 5, max 20
+        target_chapters = min(20, max(5, int(video_dur_mins / 8)))
+
+        # Sample the transcript evenly across its full length to stay within
+        # token budget (~40k chars) while covering the entire video.
+        # We take evenly-spaced lines so every part of the video is represented.
+        MAX_CHARS = 40000
+        joined_full = "\n".join(l for _, l in all_lines)
+        if len(joined_full) <= MAX_CHARS:
+            stamped_transcript = joined_full
+        else:
+            # Pick evenly-spaced lines to cover start → end
+            n = len(all_lines)
+            step = max(1, n // (MAX_CHARS // 60))  # ~60 chars per line estimate
+            sampled = [all_lines[i] for i in range(0, n, step)]
+            # Always include the very last line so end of video is anchored
+            if all_lines[-1] not in sampled:
+                sampled.append(all_lines[-1])
+            stamped_transcript = "\n".join(l for _, l in sampled)
+            # Final safety truncation (shouldn't be needed but just in case)
+            if len(stamped_transcript) > MAX_CHARS:
+                stamped_transcript = stamped_transcript[:MAX_CHARS]
+
+        prompt = (
+            "You are analyzing a timestamped video transcript. "
+            f"The video is approximately {int(video_dur_mins)} minutes long. "
+            "Split it into logical chapters/sections based on topic changes.\n\n"
+            "RULES:\n"
+            "- Each chapter's \"start\" must be the EXACT timestamp (in seconds) from the transcript where that topic begins.\n"
+            f"- Provide exactly {target_chapters} chapters spread evenly across the ENTIRE video duration — do NOT cluster all chapters at the beginning.\n"
+            "- The chapters MUST span the full video from start to end. The last chapter should start near the end of the video.\n"
+            "- Return ONLY a valid JSON array — no explanation, no markdown, no backticks.\n\n"
+            "FORMAT:\n"
+            '[{"title":"Chapter title","summary":"1-2 sentence summary","start":0},{"title":"Next chapter","summary":"summary","start":145}]\n\n'
+            f"TIMESTAMPED TRANSCRIPT:\n{stamped_transcript}"
+        )
+
+        agent  = h.agents.tutor_agent()
+        result = h._run_agent(agent, prompt)
+
+        # Parse the JSON array from the AI response
+        m = _re.search(r'\[.*\]', result, _re.DOTALL)
+        if not m:
+            return jsonify({"ok": False, "error": "AI did not return valid chapters."}), 422
+
+        chapters = _json.loads(m.group(0))
+
+        # Validate and clean up
+        clean = []
+        for c in chapters:
+            if isinstance(c, dict) and "title" in c:
+                clean.append({
+                    "title": str(c.get("title", "")).strip(),
+                    "summary": str(c.get("summary", "")).strip(),
+                    "start": float(c.get("start", 0)),
+                })
+        if not clean:
+            return jsonify({"ok": False, "error": "AI returned empty chapters."}), 422
+
+        # Sort by start time
+        clean.sort(key=lambda x: x["start"])
+
+        # Cache to DB
+        s.chapters_json = _json.dumps(clean)
+        db.session.commit()
+
+        print(f"[YT-Chapters] Generated {len(clean)} AI chapters for {sid}", flush=True)
+        return jsonify({"ok": True, "chapters": clean, "cached": False})
+
+    except Exception as e:
+        import traceback
+        print(f"[YT-Chapters] Error: {e}\n{traceback.format_exc()}", flush=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/api/session/<sid>/key_concepts", methods=["POST"])
+@login_required
+def api_key_concepts(sid):
+    """Extract key concepts from the session's content using AI."""
+    import json as _json, re as _re
+
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+
+    data = request.get_json(silent=True) or {}
+    force = bool(data.get("force", False))
+
+    # Return cached concepts unless forcing
+    if not force and s.key_concepts_json:
+        try:
+            cached = _json.loads(s.key_concepts_json)
+            if cached:
+                return jsonify({"ok": True, "concepts": cached, "cached": True})
+        except Exception:
+            pass
+
+    # Get content — use transcript for youtube, raw_text for others
+    h = _get_or_rebuild(sid, s)
+    content = ""
+    content_type = s.content_type or "content"
+
+    if s.transcript_json:
+        try:
+            chunks = _json.loads(s.transcript_json)
+            content = " ".join(c.get("text", "") for c in chunks if isinstance(c, dict))
+        except Exception:
+            pass
+
+    if not content and s.raw_text:
+        content = s.raw_text
+
+    if not content:
+        content = h._full_context(k=15) if h.rag_helper else ""
+
+    if not content:
+        return jsonify({"ok": False, "error": "No content available to extract concepts from."}), 400
+
+    # Truncate to fit token budget (~20k chars)
+    if len(content) > 20000:
+        # Sample evenly
+        words = content.split()
+        step = max(1, len(words) // 3000)
+        content = " ".join(words[::step])[:20000]
+
+    try:
+        prompt = h._prompt(
+            "key_concepts_extraction",
+            content_type={"youtube": "video", "pdf": "document", "text": "text", "audio": "audio"}.get(content_type, "content"),
+            content=content,
+        )
+        agent = h.agents.tutor_agent()
+        result = h._run_agent(agent, prompt)
+
+        # Parse the JSON array
+        m = _re.search(r'\[.*\]', result, _re.DOTALL)
+        if not m:
+            return jsonify({"ok": False, "error": "AI did not return valid concepts."}), 422
+
+        concepts = _json.loads(m.group(0))
+        # Ensure all items are strings
+        clean = [str(c).strip() for c in concepts if c and str(c).strip()]
+
+        if not clean:
+            return jsonify({"ok": False, "error": "AI returned empty concepts."}), 422
+
+        # Cache to DB
+        s.key_concepts_json = _json.dumps(clean)
+        db.session.commit()
+
+        print(f"[Key-Concepts] Generated {len(clean)} concepts for {sid}", flush=True)
+        return jsonify({"ok": True, "concepts": clean, "cached": False})
+
+    except Exception as e:
+        import traceback
+        print(f"[Key-Concepts] Error: {e}\n{traceback.format_exc()}", flush=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/session/<sid>/explain_concept", methods=["POST"])
+@login_required
+def api_explain_concept(sid):
+    """Explain a single key concept using AI, grounded in session content."""
+    import json as _json
+
+    u = current_user()
+    s = StudySession.query.filter_by(sid=sid, user_id=u.id).first_or_404()
+    h = _get_or_rebuild(sid, s)
+
+    data = request.get_json() or {}
+    concept = (data.get("concept") or "").strip()
+    if not concept:
+        return jsonify({"ok": False, "error": "No concept specified."}), 400
+
+    # Get relevant context — use RAG query for focused retrieval
+    content = ""
+    if h.rag_helper:
+        docs = h.rag_helper.query(concept, k=6)
+        if docs:
+            content = "\n\n---\n\n".join(docs)
+
+    if not content and s.raw_text:
+        content = s.raw_text[:8000]
+
+    if not content and s.transcript_json:
+        try:
+            chunks = _json.loads(s.transcript_json)
+            content = " ".join(c.get("text", "") for c in chunks if isinstance(c, dict))[:8000]
+        except Exception:
+            pass
+
+    if not content:
+        content = f"General knowledge about {concept} in the context of {s.topic}."
+
+    try:
+        prompt = h._prompt(
+            "concept_explanation",
+            concept=concept,
+            topic=s.topic or "the subject",
+            knowledge_level=s.knowledge_lvl or "intermediate",
+            content=content,
+        )
+        agent = h.agents.tutor_agent()
+        result = h._run_agent(agent, prompt)
+
+        return jsonify({"ok": True, "concept": concept, "explanation": result})
+
+    except Exception as e:
+        import traceback
+        print(f"[Explain-Concept] Error: {e}\n{traceback.format_exc()}", flush=True)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/session/<sid>/transcript", methods=["GET"])
@@ -1427,34 +1677,17 @@ def api_transcript(sid):
     except Exception:
         pass
 
-    # If no chapters cached and we have a video_id, try fetching now
-    if not chapters and s.youtube_id:
+    # If no chapters cached and we have a video_id, try fetching title via oEmbed
+    if not s.video_title and s.youtube_id:
         try:
-            import yt_dlp as _ydlp
-            ydl_opts = {
-                "quiet": True, "no_warnings": True,
-                "skip_download": True, "socket_timeout": 8,
-                "extract_flat": False,
-                # "proxy": os.environ.get("PROXY_URL") or None,
-            }
-            with _ydlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(
-                    f"https://www.youtube.com/watch?v={s.youtube_id}",
-                    download=False
-                )
-                raw_chapters = info.get("chapters") or []
-                if raw_chapters:
-                    chapters = [
-                        {"title": c.get("title",""), "start": c.get("start_time",0), "end": c.get("end_time",0)}
-                        for c in raw_chapters
-                    ]
-                    s.chapters_json = _json.dumps(chapters)
-                if not s.video_title:
-                    s.video_title = info.get("title","")[:300]
+            import requests as _rq
+            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={s.youtube_id}&format=json"
+            resp = _rq.get(oembed_url, timeout=8)
+            if resp.status_code == 200:
+                s.video_title = resp.json().get("title", "")[:300]
                 db.session.commit()
-                print(f"[Chapters] fetched {len(chapters)} chapters for {s.youtube_id}", flush=True)
         except Exception as ce:
-            print(f"[Chapters] fetch failed: {ce}", flush=True)
+            print(f"[YT] Title fetch skipped: {ce}", flush=True)
 
     if not chunks and not chapters:
         return jsonify({"ok": False, "error": "No transcript available"}), 404

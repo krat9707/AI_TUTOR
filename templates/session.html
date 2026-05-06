@@ -4,7 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{{ session.topic or 'Session' }} — Axiom</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/session.css') }}?v=2"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/session.css') }}?v=3"/>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/markdown.css') }}"/>
 
   <!-- Lucide icons -->
@@ -97,16 +97,16 @@
       </div>
     </div>
 
-    <!-- Transcript / Chapters panel -->
+    <!-- Transcript / Key Concepts panel -->
     <div class="transcript-area">
       <div class="tr-tabs">
         <button class="tr-tab active" data-tr="transcript" onclick="switchTrTab(this)">
           <i data-lucide="align-left"></i>
           Transcript
         </button>
-        <button class="tr-tab" data-tr="chapters" onclick="switchTrTab(this)">
-          <i data-lucide="list"></i>
-          Chapters
+        <button class="tr-tab" data-tr="concepts" onclick="switchTrTab(this)">
+          <i data-lucide="lightbulb"></i>
+          Key Concepts
         </button>
       </div>
       <div class="tr-content" id="transcript-list">
@@ -448,8 +448,8 @@
   function switchTrTab(btn) {
     document.querySelectorAll('.tr-tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
-    if (btn.dataset.tr === 'chapters') {
-      renderChapters(chaptersData);
+    if (btn.dataset.tr === 'concepts') {
+      renderKeyConcepts(keyConceptsData);
     } else {
       renderTranscript(transcriptChunks);
     }
@@ -459,7 +459,7 @@
     if (typeof lucide !== 'undefined') lucide.createIcons();
   });
 </script>
-<script src="{{ url_for('static', filename='js/session.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/session.js') }}?v=4"></script>
 <script>
   // Re-run lucide only when new [data-lucide] elements appear, with debounce to prevent loops
   let _lucideDebounce = null;

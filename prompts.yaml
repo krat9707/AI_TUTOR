@@ -303,3 +303,41 @@ prompts:
       - If the answer spans multiple excerpts, synthesise them
       - If the information isn't in the excerpts, say: "This specific information wasn't found in your documents."
       - Be clear, structured, and educational in your response
+
+  key_concepts_extraction:
+    base: |
+      You are an expert educator analysing the following content from a {content_type}.
+      Your task is to identify the KEY CONCEPTS — the central ideas, terms, and principles
+      that a student must understand.
+
+      CONTENT:
+      {content}
+
+      RULES:
+      - Extract between 6 and 15 key concepts depending on how much content is available.
+      - Each concept must have a short, clear name (2-5 words max).
+      - Order them by the sequence they appear in the content, not alphabetically.
+      - Return ONLY a valid JSON array of strings — no explanation, no markdown, no backticks.
+
+      FORMAT:
+      ["Concept Name 1","Concept Name 2","Concept Name 3"]
+
+  concept_explanation:
+    base: |
+      You are a world-class tutor explaining a single concept to a {knowledge_level} level student.
+
+      CONCEPT: {concept}
+      TOPIC CONTEXT: {topic}
+
+      SOURCE CONTENT (use this as your primary reference):
+      {content}
+
+      Write a focused, educational explanation that:
+      1. Opens with a clear one-sentence definition
+      2. Explains WHY this concept matters in the broader context of {topic}
+      3. Breaks down the key details with examples or analogies
+      4. Highlights common misconceptions if relevant
+      5. Ends with a concise "Key Takeaway" sentence
+
+      Use markdown formatting (headings, bullets, bold for key terms).
+      Keep the explanation thorough but not overwhelming — aim for 150-300 words.
