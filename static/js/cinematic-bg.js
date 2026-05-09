@@ -2,7 +2,7 @@
  * ╔══════════════════════════════════════════════════════════════╗
  * ║  Cinematic Scroll-Synced Background Engine                  ║
  * ║  Premium Apple-style image-sequence animation               ║
- * ║  240 PNG frames · Lenis smooth scroll · Canvas 2D           ║
+ * ║  158 PNG frames · Lenis smooth scroll · Canvas 2D           ║
  * ╚══════════════════════════════════════════════════════════════╝
  */
 (function () {
@@ -12,7 +12,7 @@
      CONFIGURATION
   ═══════════════════════════════════════════ */
   const CONFIG = {
-    frameCount: 240,
+    frameCount: 158,
     framePath: '/static/bg-frames/ezgif-frame-',
     frameExt: '.png',
     frameDigits: 3,
